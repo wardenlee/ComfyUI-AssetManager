@@ -40,7 +40,7 @@ An in-panel **asset manager** for ComfyUI that auto-archives every image/video y
 
 | Grid · 网格视图 | Calendar · 日历视图 |
 |---|---|
-| ![Grid](assets/screenshots/PixPin_2026-09-19_23-45-58.png) | ![Calendar](assets/screenshots/02-calendar.png) |
+| ![Grid](assets/screenshots/PixPin_2026-09-19_23-45-58.png) | ![Calendar](assets/screenshots/PixPin_2026-09-20_00-15-18.png) |
 
 | Preview · 预览详情 | Settings · 资产设置 | Browse · 目录点选 |
 |---|---|---|
