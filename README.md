@@ -57,7 +57,7 @@ Search for `AssetManager` in the Manager and install.<br>
 
 ```bash
 cd ComfyUI/custom_nodes
-git clone https://github.com/Wumihaze/ComfyUI-AssetManager.git
+git clone https://github.com/wardenlee/ComfyUI-AssetManager.git
 ```
 
 ### Method 3: Manual download · 方法三：手动下载
