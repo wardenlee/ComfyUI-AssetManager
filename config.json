@@ -1,0 +1,13 @@
+{
+  "output_dir": "/tmp/output",
+  "archive_dir": "/tmp/code",
+  "backup_dir": "/tmp/code",
+  "auto_archive": true,
+  "archive_existing": true,
+  "thumb_width": 480,
+  "interval_sec": 10,
+  "ffprobe": "",
+  "ffmpeg": "",
+  "auto_download": false,
+  "download_dir": "C:\\Users\\Administrator\\Downloads\\"
+}
