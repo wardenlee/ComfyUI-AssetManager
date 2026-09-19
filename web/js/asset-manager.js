@@ -91,7 +91,7 @@ app.registerExtension({
     }
     const L10N = {
       "资产管理": "Asset Manager",
-      "浏览/搜索/删除产物, 切换输出目录, 备份": "Browse / search / delete assets, switch output directory, backup",
+      "浏览/搜索/删除产物, 切换输出目录, 下载": "Browse / search / delete assets, switch output directory, download",
       "搜索提示词 / 模型 / 文件名 / 日期…": "Search prompts / models / filename / date…",
       "🗂 资产管理": "🗂 Asset Manager",
       "‹ 上月": "‹ Prev",
@@ -104,8 +104,9 @@ app.registerExtension({
       "视频": "Videos",
       "☑ 多选": "☑ Multi-select",
       "🗑 删除选中": "🗑 Delete selected",
+      "⬇ 下载选中": "⬇ Download selected",
       "⚙ 资产设置": "⚙ Settings",
-      "💾 备份": "💾 Backup",
+      "⬇ 下载": "⬇ Download",
       "⟳ 扫描": "⟳ Scan",
       "图": "Img",
       "(未检测到提示词)": "(no prompt detected)",
@@ -130,14 +131,15 @@ app.registerExtension({
       "留空=使用 ComfyUI 默认 output": "Leave empty = ComfyUI default output",
       "输出目录": "Output directory",
       "归档库目录": "Archive directory",
-      "备份目录": "Backup directory",
+      "下载目录": "Download directory",
       "自动归档新产物": "Auto-archive new assets",
+      "自动下载新产物": "Auto-download new assets",
       "归档安装前已有的产物": "Archive assets already present on install",
       "缩略图宽度(px)": "Thumbnail width (px)",
       "扫描间隔(秒)": "Scan interval (sec)",
       "浏览…": "Browse…",
       "保存设置": "Save settings",
-      "改归档/备份目录后新产物进入新目录, 旧数据保留; 输出目录切换重启 ComfyUI 后仍生效; 自动归档开关和扫描间隔即时生效。": "After changing the archive/backup directory, new assets go to the new directory (old data stays). Output directory changes persist across ComfyUI restarts. Auto-archive and scan interval take effect immediately.",
+      "改归档/下载目录后新产物进入新目录, 旧数据保留; 输出目录切换重启 ComfyUI 后仍生效; 自动归档/自动下载开关和扫描间隔即时生效。下载目录: 点「浏览…」可在系统对话框选择本地目录（授权后下载/自动下载直接写入该目录, 无需经过浏览器下载; 未授权时使用浏览器默认下载目录）。": "After changing the archive/download directory, new assets go to the new directory (old data stays). Output directory changes persist across ComfyUI restarts. Auto-archive/auto-download and scan interval take effect immediately. Download folder: click Browse to pick a local folder in the system dialog (after grant, downloads/auto-downloads are written directly into it, bypassing the browser download flow; otherwise the browser default folder is used).",
       "✅ 设置已保存": "✅ Settings saved",
       "📁 选择目录": "📁 Select directory",
       "（请选择磁盘）": "(select a drive)",
@@ -145,16 +147,22 @@ app.registerExtension({
       "⬆ 上一级": "⬆ Up",
       "✅ 选择此目录": "✅ Select this folder",
       "取消": "Dismiss",
-      "💾 备份确认": "💾 Backup confirmation",
-      "将备份以下内容:": "Will back up:",
-      "• 资产库（图片/视频/元数据/工作流）<br>• 工作流文件 (user/default/workflows)<br>• 插件配置": "• Asset library (images / videos / metadata / workflows)<br>• Workflow files (user/default/workflows)<br>• Plugin config",
-      "备份目录: ": "Backup directory: ",
-      "确定备份": "Back up",
-      "备份中…": "Backing up…",
-      "✅ 备份完成: ": "✅ Backup done: ",
-      " 个文件) → ": " files) → ",
+      "⬇ 下载确认": "⬇ Download confirmation",
+      "将打包下载以下内容:": "Will package and download:",
+      "• 当前列表中的全部资产（图片/视频/元数据/工作流）": "• All assets in the current list (images / videos / metadata / workflows)",
+      "下载数量: ": "Items to download: ",
+      "确定下载": "Download",
+      "正在打包下载…": "Preparing download…",
+      "✅ 已开始下载: ": "✅ Download started: ",
+      " 个文件, 保存到本地浏览器下载目录": " files, saved to the browser download folder",
       "扫描中…": "Scanning…",
       "扫描失败": "Scan failed",
+      "该资产下载失败": "Failed to download this asset",
+      "（为空时使用浏览器默认下载目录, 如 C:\\Users\\Administrator\\Downloads\\）": "(leave empty to use the browser default download folder, e.g. C:\\Users\\Administrator\\Downloads\\)",
+      "自动下载已启用: 新产物将自动保存到浏览器下载目录": "Auto-download enabled: new assets will be saved to the browser download folder",
+      "已连接本地目录: ": "Linked local folder: ",
+      "选择目录失败: ": "Pick folder failed: ",
+      "当前浏览器不支持直接选择本地目录, 将使用浏览器默认下载目录": "The browser does not support picking a local folder; will use the browser default download folder",
       "加载中…": "Loading…",
       "共 ": "Total: ",
       " 条资产": " assets",
@@ -230,7 +238,7 @@ app.registerExtension({
     }
 
     function pad(n) { return String(n).padStart(2, "0"); }
-    function mediaUrl(dir, f) { return "/asset/file?p=" + encodeURIComponent(dir + "/" + f); }
+    function mediaUrl(dir, f) { return "./asset/file?p=" + encodeURIComponent(dir + "/" + f); }
 
     function matches(r, kw) {
       kw = kw.toLowerCase();
@@ -312,8 +320,10 @@ app.registerExtension({
 
     const settingsBtn = $el("button.asm-btn", { onclick: openSettings });
     bindText(settingsBtn, "⚙ 资产设置");
-    const backupBtn = $el("button.asm-btn", { onclick: confirmBackup });
-    bindText(backupBtn, "💾 备份");
+    const batchDownloadBtn = $el("button.asm-btn", { onclick: downloadSelected, style: { display: "none" } });
+    bindText(batchDownloadBtn, "⬇ 下载选中");
+    const downloadBtn = $el("button.asm-btn", { onclick: confirmDownload });
+    bindText(downloadBtn, "⬇ 下载");
     const scanBtn = $el("button.asm-btn", { onclick: doScan });
     bindText(scanBtn, "⟳ 扫描");
     const toolbar = $el("div.asm-toolbar", {}, [
@@ -325,8 +335,9 @@ app.registerExtension({
       mkKindBtn("视频", "video"),
       multiBtn,
       batchBtn,
+      batchDownloadBtn,
       settingsBtn,
-      backupBtn,
+      downloadBtn,
       scanBtn,
       countEl,
     ]);
@@ -455,8 +466,11 @@ app.registerExtension({
       if (multi && selected.size > 0) {
         batchBtn.style.display = "";
         batchBtn.textContent = t("🗑 删除选中") + "(" + selected.size + ")";
+        batchDownloadBtn.style.display = "";
+        batchDownloadBtn.textContent = t("⬇ 下载选中") + "(" + selected.size + ")";
       } else {
         batchBtn.style.display = "none";
+        batchDownloadBtn.style.display = "none";
       }
     }
     function toggleMulti() {
@@ -473,7 +487,7 @@ app.registerExtension({
         ? ("确定要从硬盘永久删除选中的 " + ids.length + " 项产物吗?\n\n将同时删除归档副本和 output 中的原始文件, 无法恢复。")
         : ("Permanently delete the selected " + ids.length + " items from disk?\n\nThis also deletes the archive copies and the original files in output. This cannot be undone.");
       if (!confirm(msg)) return;
-      const res = await fetch("/asset/delete_batch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ run_ids: ids }) });
+      const res = await fetch("./asset/delete_batch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ run_ids: ids }) });
       const d = await res.json();
       if (d.ok) {
         const delSet = new Set(ids);
@@ -524,7 +538,7 @@ app.registerExtension({
 
     function downloadWorkflow(r) {
       if (!r.has_workflow) { statusMsg(t("该产物未携带 workflow 元数据")); return; }
-      fetch("/asset/file?p=" + encodeURIComponent(r.dir + "/workflow.json"))
+      fetch("./asset/file?p=" + encodeURIComponent(r.dir + "/workflow.json"))
         .then(x => x.blob()).then(b => {
           const a = document.createElement("a");
           a.href = URL.createObjectURL(b);
@@ -538,7 +552,7 @@ app.registerExtension({
         ? ("确定要从硬盘永久删除该产物吗?\n\n" + r.name + "\n\n将同时删除归档副本和 output 中的原始文件, 无法恢复。")
         : ("Permanently delete this asset from disk?\n\n" + r.name + "\n\nThis also deletes the archive copy and the original file in output. This cannot be undone.");
       if (!confirm(msg)) return;
-      const res = await fetch("/asset/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ run_id: r.dir }) });
+      const res = await fetch("./asset/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ run_id: r.dir }) });
       const d = await res.json();
       if (d.ok) {
         modal.remove();
@@ -549,18 +563,23 @@ app.registerExtension({
 
     // ---------- 设置 ----------
     async function openSettings() {
-      try { curConfig = await (await fetch("/asset/config")).json(); } catch (e) {}
+      try { curConfig = await (await fetch("./asset/config")).json(); } catch (e) {}
       const c = curConfig.config || {};
       const m = $el("div.asm-modal");
       m.style.display = "flex";
       const fOut = $el("input", { value: curConfig.current_output_dir || "" });
       bindText(fOut, "留空=使用 ComfyUI 默认 output", "placeholder");
       const fArch = $el("input", { value: curConfig.archive_dir || c.archive_dir || "" });
-      const fBak = $el("input", { value: c.backup_dir || "" });
+      const fDlDir = $el("input", { value: c.download_dir || "C:\\Users\\Administrator\\Downloads\\" });
+      bindText(fDlDir, "C:\\Users\\Administrator\\Downloads\\", "placeholder");
       const fAuto = $el("input", { type: "checkbox" });
       fAuto.checked = c.auto_archive !== false;
+      const fAutoDl = $el("input", { type: "checkbox" });
+      fAutoDl.checked = c.auto_download === true;
       const fExisting = $el("input", { type: "checkbox" });
       fExisting.checked = c.archive_existing === true;
+      await loadDlHandle();
+      if (dlDirHandle && dlDirHandle.name && !fDlDir.value) fDlDir.value = dlDirHandle.name;
       const fThumb = $el("input", { type: "number", min: 100, max: 2000, value: String(c.thumb_width || 480) });
       const fInterval = $el("input", { type: "number", min: 3, max: 3600, value: String(c.interval_sec || 10) });
 
@@ -575,8 +594,13 @@ app.registerExtension({
         $el("div.asm-set", {}, [
           row("输出目录", fOut, true),
           row("归档库目录", fArch, true),
-          row("备份目录", fBak, true),
+          $el("div.row", {}, [
+            bindText($el("label"), "下载目录"),
+            fDlDir,
+            bindText($el("button.asm-btn", { onclick: () => pickDlDir(fDlDir) }), "浏览…"),
+          ]),
           $el("div.chk", {}, [fAuto, bindText($el("span"), "自动归档新产物")]),
+          $el("div.chk", {}, [fAutoDl, bindText($el("span"), "自动下载新产物")]),
           $el("div.chk", {}, [fExisting, bindText($el("span"), "归档安装前已有的产物")]),
           row("缩略图宽度(px)", fThumb),
           row("扫描间隔(秒)", fInterval),
@@ -584,7 +608,7 @@ app.registerExtension({
         $el("div.btns", {}, [
           bindText($el("button.asm-btn.primary", { onclick: saveSettings }), "保存设置"),
         ]),
-        bindText($el("div", { style: { fontSize: "11px", color: "var(--descrip-text,#aaa)", marginTop: "10px" } }), "改归档/备份目录后新产物进入新目录, 旧数据保留; 输出目录切换重启 ComfyUI 后仍生效; 自动归档开关和扫描间隔即时生效。"),
+        bindText($el("div", { style: { fontSize: "11px", color: "var(--descrip-text,#aaa)", marginTop: "10px" } }), "改归档/下载目录后新产物进入新目录, 旧数据保留; 输出目录切换重启 ComfyUI 后仍生效; 自动归档/自动下载开关和扫描间隔即时生效。下载目录: 点「浏览…」可在系统对话框选择本地目录（授权后下载/自动下载直接写入该目录, 无需经过浏览器下载; 未授权时使用浏览器默认下载目录）。"),
       ]);
       m.appendChild($el("div.bk", { onclick: () => m.remove() }));
       m.appendChild(pn);
@@ -594,13 +618,14 @@ app.registerExtension({
         const payload = {
           output_dir: fOut.value.trim(),
           archive_dir: fArch.value.trim(),
-          backup_dir: fBak.value.trim(),
+          download_dir: fDlDir.value.trim(),
           auto_archive: fAuto.checked,
+          auto_download: fAutoDl.checked,
           archive_existing: fExisting.checked,
           thumb_width: Number(fThumb.value),
           interval_sec: Number(fInterval.value),
         };
-        const r = await fetch("/asset/set_config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        const r = await fetch("./asset/set_config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
         const d = await r.json();
         if (d.ok) {
           curConfig = { config: d.config, archive_dir: d.archive_dir, current_output_dir: d.current_output_dir };
@@ -624,7 +649,7 @@ app.registerExtension({
 
       async function load(path) {
         try {
-          const res = await fetch("/asset/browse_dir?path=" + encodeURIComponent(path));
+          const res = await fetch("./asset/browse_dir?path=" + encodeURIComponent(path));
           const d = await res.json();
           if (!d.ok) { pathEl.textContent = t("错误: ") + (terr(d.error) || ""); listEl.innerHTML = ""; return; }
           curPath = d.path || "";
@@ -653,7 +678,7 @@ app.registerExtension({
         $el("div.btns", { style: { margin: "8px 0" } }, [
           bindText($el("button.asm-btn", { onclick: async () => {
             try {
-              const res = await fetch("/asset/browse_dir?path=" + encodeURIComponent(curPath));
+              const res = await fetch("./asset/browse_dir?path=" + encodeURIComponent(curPath));
               const d = await res.json();
               if (d.ok) load(d.parent || "");
             } catch (e) {}
@@ -671,25 +696,195 @@ app.registerExtension({
       await load(curPath);
     }
 
-    // ---------- 备份 / 扫描 ----------
-    async function confirmBackup() {
-      try { curConfig = await (await fetch("/asset/config")).json(); } catch (e) {}
-      const bakDir = (curConfig.config && curConfig.config.backup_dir) || curConfig.default_backup_dir || "";
+    // ---------- 下载 / 扫描 ----------
+    // ---- 纯前端 ZIP（store 无压缩）----
+    const CRC_TABLE = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); t[n] = c >>> 0; } return t; })();
+    function crc32(u8) { let c = 0xFFFFFFFF; for (let i = 0; i < u8.length; i++) c = CRC_TABLE[(c ^ u8[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+    function dosDateNow() { const n = new Date(); return ((n.getFullYear() - 1980) << 9) | ((n.getMonth() + 1) << 5) | n.getDate(); }
+    function dosTimeNow() { const n = new Date(); return (n.getHours() << 11) | (n.getMinutes() << 5) | Math.floor(n.getSeconds() / 2); }
+    function u16(v) { return [v & 255, (v >>> 8) & 255]; }
+    function u32(v) { return [v & 255, (v >>> 8) & 255, (v >>> 16) & 255, (v >>> 24) & 255]; }
+    async function makeZip(entries) {
+      // entries: [{path, bytes: Uint8Array}]
+      const enc = new TextEncoder();
+      const parts = [];
+      const central = [];
+      let offset = 0;
+      const dt = dosDateNow(), tm = dosTimeNow();
+      for (const e of entries) {
+        const nameB = enc.encode(e.path);
+        const data = e.bytes;
+        const crc = crc32(data);
+        const lh = new Uint8Array(30 + nameB.length);
+        lh.set([0x50, 0x4B, 0x03, 0x04], 0);
+        lh.set(u16(20), 4); lh.set(u16(0x0800), 6); lh.set(u16(0), 8); lh.set(u16(0), 10);
+        lh.set(u16(tm), 12); lh.set(u16(dt), 14);
+        lh.set(u32(crc), 16); lh.set(u32(data.length), 20); lh.set(u32(data.length), 24);
+        lh.set(u16(nameB.length), 26); lh.set(u16(0), 28);
+        lh.set(nameB, 30);
+        const lhBlob = new Blob([lh, data]);
+        central.push({ nameB, crc, size: data.length, offset });
+        offset += lhBlob.size;
+        parts.push(lhBlob);
+      }
+      const cdStart = offset;
+      for (const c of central) {
+        const ch = new Uint8Array(46 + c.nameB.length);
+        ch.set([0x50, 0x4B, 0x01, 0x02], 0);
+        ch.set(u16(20), 4); ch.set(u16(20), 6); ch.set(u16(0x0800), 8); ch.set(u16(0), 10);
+        ch.set(u16(tm), 12); ch.set(u16(dt), 14);
+        ch.set(u32(c.crc), 16); ch.set(u32(c.size), 20); ch.set(u32(c.size), 24);
+        ch.set(u16(c.nameB.length), 28); ch.set(u16(0), 30); ch.set(u16(0), 32); ch.set(u16(0), 34); ch.set(u16(0), 36);
+        ch.set(u32(c.offset), 42);
+        ch.set(c.nameB, 46);
+        parts.push(new Blob([ch]));
+        offset += ch.length;
+      }
+      const cdSize = offset - cdStart;
+      const eocd = new Uint8Array(22);
+      eocd.set([0x50, 0x4B, 0x05, 0x06], 0);
+      eocd.set(u16(0), 4); eocd.set(u16(0), 6); eocd.set(u16(entries.length), 8); eocd.set(u16(entries.length), 10);
+      eocd.set(u32(cdSize), 12); eocd.set(u32(cdStart), 16); eocd.set(u16(0), 20);
+      parts.push(new Blob([eocd]));
+      return new Blob(parts, { type: "application/zip" });
+    }
+    function triggerDownload(blob, filename) {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+    }
+    // ---- 本地下载目录 (File System Access API) ----
+    let dlDirHandle = null;
+    const DL_DB = "am_dl_handle";
+    function idbOpen() {
+      return new Promise((res, rej) => {
+        if (!window.indexedDB) return rej(new Error("no indexedDB"));
+        const r = indexedDB.open(DL_DB, 1);
+        r.onupgradeneeded = () => r.result.createObjectStore("kv");
+        r.onsuccess = () => res(r.result);
+        r.onerror = () => rej(r.error);
+      });
+    }
+    async function idbGet(k) {
+      const db = await idbOpen();
+      return new Promise((res, rej) => {
+        const tx = db.transaction("kv", "readonly");
+        const q = tx.objectStore("kv").get(k);
+        q.onsuccess = () => res(q.result);
+        q.onerror = () => rej(q.error);
+      });
+    }
+    async function idbSet(k, v) {
+      const db = await idbOpen();
+      return new Promise((res, rej) => {
+        const tx = db.transaction("kv", "readwrite");
+        tx.objectStore("kv").put(v, k);
+        tx.oncomplete = () => res();
+        tx.onerror = () => rej(tx.error);
+      });
+    }
+    async function loadDlHandle() {
+      try {
+        const h = await idbGet("dir");
+        if (!h || !h.queryPermission) { dlDirHandle = null; return; }
+        let st = await h.queryPermission({ mode: "readwrite" });
+        if (st !== "granted") {
+          try { st = await h.requestPermission({ mode: "readwrite" }); } catch (e) { st = "denied"; }
+        }
+        dlDirHandle = st === "granted" ? h : null;
+      } catch (e) { dlDirHandle = null; }
+    }
+    async function pickDlDir(inputEl) {
+      if (!window.showDirectoryPicker) { statusMsg("当前浏览器不支持直接选择本地目录, 将使用浏览器默认下载目录"); return; }
+      try {
+        const h = await window.showDirectoryPicker({ mode: "readwrite" });
+        dlDirHandle = h;
+        try { await idbSet("dir", h); } catch (e) {}
+        if (inputEl) inputEl.value = h.name || "";
+        statusMsg(LANG === "zh" ? ("✅ 已连接本地目录: " + (h.name || "")) : ("✅ Linked local folder: " + (h.name || "")));
+      } catch (e) {
+        if (e && (e.name === "AbortError" || e.name === "SecurityError")) return;
+        statusMsg(LANG === "zh" ? ("选择目录失败: " + (e && e.message ? e.message : e)) : ("Pick folder failed: " + (e && e.message ? e.message : e)));
+      }
+    }
+    async function saveBlobToLocal(blob, fileName) {
+      // 优先写入已授权的本地目录（File System Access API），否则回退浏览器下载
+      if (dlDirHandle && dlDirHandle.getFileHandle) {
+        try {
+          const fh = await dlDirHandle.getFileHandle(fileName, { create: true });
+          const w = await fh.createWritable();
+          await w.write(blob);
+          await w.close();
+          return "dir";
+        } catch (e) { console.warn("AssetManager local dir write failed, fallback to browser download:", e); }
+      }
+      triggerDownload(blob, fileName);
+      return "browser";
+    }
+    function baseName(p) { const i = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\")); return i >= 0 ? p.slice(i + 1) : p; }
+    function safeName(n) { return String(n || "asset").replace(/[\\/:*?"<>|]/g, "_"); }
+    async function fetchAssetBytes(relPath) {
+      const res = await fetch("./asset/file?p=" + encodeURIComponent(relPath));
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return new Uint8Array(await res.arrayBuffer());
+    }
+    async function buildZipForRuns(list) {
+      const entries = [];
+      const used = new Set();
+      for (const r of list) {
+        try {
+          if (r.media) {
+            const base = safeName(r.name) + "_" + baseName(r.media);
+            let nm = base, dup = 1;
+            while (used.has(nm)) { nm = base.replace(/(\.\w+)?$/, "_" + (dup++) + "$1"); }
+            used.add(nm);
+            entries.push({ path: nm, bytes: await fetchAssetBytes(r.dir + "/" + r.media) });
+          }
+          if (r.has_workflow) {
+            const nm = safeName(r.name) + "_workflow.json";
+            if (!used.has(nm)) { used.add(nm); entries.push({ path: nm, bytes: await fetchAssetBytes(r.dir + "/workflow.json") }); }
+          }
+          const info = [
+            "Name: " + r.name,
+            "Time: " + (r.time || ""),
+            (r.positive ? "\nPrompt:\n" + r.positive : ""),
+            (r.negative ? "\nNegative:\n" + r.negative : ""),
+            (r.models && r.models.length ? "\nModels: " + r.models.join(", ") : ""),
+            (r.params ? "\nParams: " + Object.keys(r.params).map(k => k + "=" + r.params[k]).join(" · ") : ""),
+          ].filter(Boolean).join("\n");
+          const nm = safeName(r.name) + "_info.txt";
+          if (!used.has(nm)) { used.add(nm); entries.push({ path: nm, bytes: new TextEncoder().encode(info) }); }
+        } catch (e) { console.error("AssetManager download failed for", r.dir, e); }
+      }
+      return makeZip(entries);
+    }
+    async function downloadRuns(list, label) {
+      if (!list || !list.length) { statusMsg(t("没有匹配的产物")); return; }
+      statusMsg(label + list.length + t(" 个文件, 保存到本地浏览器下载目录"));
+      const blob = await buildZipForRuns(list);
+      const zipName = "comfyui_assets_" + new Date().toISOString().slice(0, 10) + ".zip";
+      const mode = await saveBlobToLocal(blob, zipName);
+      if (mode === "dir" && dlDirHandle && dlDirHandle.name) {
+        statusMsg(LANG === "zh" ? ("✅ 已下载 " + list.length + " 个资产到本地目录: " + dlDirHandle.name) : ("✅ Downloaded " + list.length + " assets to local folder: " + dlDirHandle.name));
+      } else {
+        statusMsg(t("✅ 已开始下载: ") + list.length + t(" 个文件, 保存到本地浏览器下载目录"));
+      }
+    }
+    async function confirmDownload() {
+      const list = filtered(runs);
+      if (!list.length) { statusMsg(t("没有匹配的产物")); return; }
       const m = $el("div.asm-modal");
       m.style.display = "flex";
-      const bakRow = $el("div", { style: { fontSize: "13px", marginBottom: "14px", wordBreak: "break-all" } });
-      const bakPrefix = $el("span");
-      bindText(bakPrefix, "备份目录: ");
-      bakRow.appendChild(bakPrefix);
-      bakRow.appendChild(document.createTextNode(bakDir));
       const pn = $el("div.pn", {}, [
         $el("button.x", { textContent: "✕", onclick: () => m.remove() }),
-        bindText($el("h2", { style: { margin: "0 0 12px", fontSize: "15px" } }), "💾 备份确认"),
-        bindText($el("div", { style: { fontSize: "13px", marginBottom: "6px" } }), "将备份以下内容:"),
-        bindText($el("div", { style: { fontSize: "13px", color: "var(--descrip-text,#aaa)", marginBottom: "12px", lineHeight: "1.8" } }), "• 资产库（图片/视频/元数据/工作流）<br>• 工作流文件 (user/default/workflows)<br>• 插件配置", "innerHTML"),
-        bakRow,
+        bindText($el("h2", { style: { margin: "0 0 12px", fontSize: "15px" } }), "⬇ 下载确认"),
+        bindText($el("div", { style: { fontSize: "13px", marginBottom: "6px" } }), "将打包下载以下内容:"),
+        bindText($el("div", { style: { fontSize: "13px", color: "var(--descrip-text,#aaa)", marginBottom: "12px", lineHeight: "1.8" } }), "• 当前列表中的全部资产（图片/视频/元数据/工作流）", "innerHTML"),
+        bindText($el("div", { style: { fontSize: "13px", marginBottom: "14px", wordBreak: "break-all" } }), t("下载数量: ") + list.length),
         $el("div.btns", {}, [
-          bindText($el("button.asm-btn.primary", { onclick: () => { m.remove(); doBackup(); } }), "确定备份"),
+          bindText($el("button.asm-btn.primary", { onclick: () => { m.remove(); downloadRuns(list, t("正在打包下载…")); } }), "确定下载"),
           bindText($el("button.asm-btn", { onclick: () => m.remove() }), "取消"),
         ]),
       ]);
@@ -697,16 +892,15 @@ app.registerExtension({
       m.appendChild(pn);
       document.body.appendChild(m);
     }
-    async function doBackup() {
-      statusMsg(t("备份中…"));
-      const res = await fetch("/asset/backup", { method: "POST" });
-      const d = await res.json();
-      if (d.ok) statusMsg(t("✅ 备份完成: ") + d.name + " (" + (d.size / 1048576).toFixed(1) + " MB, " + d.files + t(" 个文件) → ") + d.file);
-      else statusMsg(t("备份失败: ") + (terr(d.error) || ""));
+    async function downloadSelected() {
+      if (!selected.size) return;
+      const set = new Set(selected);
+      const list = runs.filter(r => set.has(r.dir));
+      await downloadRuns(list, t("正在打包下载…"));
     }
     async function doScan() {
       statusMsg(t("扫描中…"));
-      const res = await fetch("/asset/scan", { method: "POST" });
+      const res = await fetch("./asset/scan", { method: "POST" });
       const d = await res.json();
       statusMsg(d.ok ? (LANG === "zh" ? ("扫描完成, 新增 " + d.new + " 条") : ("Scan done, " + d.new + " new")) : t("扫描失败"));
       await loadRuns(); refresh();
@@ -716,10 +910,10 @@ app.registerExtension({
 
     // ---------- 打开/关闭 ----------
     async function loadRuns() {
-      const res = await fetch("/asset/list");
+      const res = await fetch("./asset/list");
       const d = await res.json();
       if (d.ok) { runs = d.runs || []; rebuildByDate(); }
-      try { curConfig = await (await fetch("/asset/config")).json(); } catch (e) {}
+      try { curConfig = await (await fetch("./asset/config")).json(); } catch (e) {}
     }
     async function openPanel() {
       detectLang();
@@ -752,7 +946,7 @@ app.registerExtension({
     async function pollRefresh() {
       checkLang();
       try {
-        const res = await fetch("/asset/list");
+        const res = await fetch("./asset/list");
         const d = await res.json();
         if (!d.ok) return;
         const newDirs = new Set((d.runs || []).map(r => r.dir));
@@ -765,8 +959,26 @@ app.registerExtension({
           for (const s of [...selected]) if (!newDirs.has(s)) selected.delete(s);
           refresh();
           statusMsg(t("已自动更新: 共 ") + runs.length + t(" 条资产"));
+          await autoDownloadNew(newDirs, d.runs || []);
         }
       } catch (e) {}
+    }
+
+    // ---------- 自动下载新产物 ----------
+    async function autoDownloadNew(newDirs, allRuns) {
+      try {
+        const cfg = curConfig && curConfig.config;
+        if (!cfg || cfg.auto_download !== true) return;
+        let done = [];
+        try { done = JSON.parse(localStorage.getItem("am_auto_dl_done") || "[]"); } catch (e) {}
+        const doneSet = new Set(Array.isArray(done) ? done : []);
+        const fresh = (allRuns || []).filter(r => newDirs.has(r.dir) && !doneSet.has(r.dir));
+        if (!fresh.length) return;
+        for (const r of fresh) doneSet.add(r.dir);
+        localStorage.setItem("am_auto_dl_done", JSON.stringify([...doneSet]));
+        statusMsg(t("自动下载已启用: 新产物将自动保存到浏览器下载目录"));
+        await downloadRuns(fresh, t("正在打包下载…"));
+      } catch (e) { console.error("AssetManager auto-download failed:", e); }
     }
 
     q.addEventListener("input", refresh);
@@ -777,7 +989,7 @@ app.registerExtension({
       const btn = new ComfyButton({
         icon: "archive",
         content: t("资产管理"),
-        tooltip: t("浏览/搜索/删除产物, 切换输出目录, 备份"),
+        tooltip: t("浏览/搜索/删除产物, 切换输出目录, 下载"),
         action: () => openPanel(),
       });
       if (app.menu && app.menu.settingsGroup) app.menu.settingsGroup.append(btn);
@@ -785,7 +997,7 @@ app.registerExtension({
         try {
           const span = btn.element && btn.element.querySelector("span");
           if (span) span.textContent = t("资产管理");
-          if (btn.element) btn.element.title = t("浏览/搜索/删除产物, 切换输出目录, 备份");
+          if (btn.element) btn.element.title = t("浏览/搜索/删除产物, 切换输出目录, 下载");
         } catch (e) {}
       });
     } catch (e) {
