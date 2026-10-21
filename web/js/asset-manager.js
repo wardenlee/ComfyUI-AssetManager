@@ -157,6 +157,15 @@ app.registerExtension({
       " 个文件, 保存到本地浏览器下载目录": " files, saved to the browser download folder",
       "扫描中…": "Scanning…",
       "扫描失败": "Scan failed",
+      "下载方式": "Download mode",
+      "原样保存(不打包)": "Save as-is (no ZIP)",
+      "打包为 ZIP": "Package as ZIP",
+      "将逐个保存以下文件:": "Will save the following files individually:",
+      "正在保存…": "Saving…",
+      "✅ 已保存 ": "✅ Saved ",
+      "（浏览器下载目录）": "(browser download folder)",
+      "• 当前列表中的全部资产（图片/视频/元数据/工作流）, 打包为单个 ZIP": "• All assets in the current list (images / videos / metadata / workflows), packaged as a single ZIP",
+      "• 当前列表中的全部资产（图片/视频/元数据/工作流）, 逐个原样保存": "• All assets in the current list (images / videos / metadata / workflows), saved individually as-is",
       "该资产下载失败": "Failed to download this asset",
       "（为空时使用浏览器默认下载目录, 如 C:\\Users\\Administrator\\Downloads\\）": "(leave empty to use the browser default download folder, e.g. C:\\Users\\Administrator\\Downloads\\)",
       "自动下载已启用: 新产物将自动保存到浏览器下载目录": "Auto-download enabled: new assets will be saved to the browser download folder",
@@ -582,6 +591,14 @@ app.registerExtension({
       if (dlDirHandle && dlDirHandle.name && !fDlDir.value) fDlDir.value = dlDirHandle.name;
       const fThumb = $el("input", { type: "number", min: 100, max: 2000, value: String(c.thumb_width || 480) });
       const fInterval = $el("input", { type: "number", min: 3, max: 3600, value: String(c.interval_sec || 10) });
+      const fMode = $el("select");
+      const oRaw = $el("option", { value: "raw" });
+      oRaw.textContent = t("原样保存(不打包)");
+      const oZip = $el("option", { value: "zip" });
+      oZip.textContent = t("打包为 ZIP");
+      fMode.appendChild(oRaw);
+      fMode.appendChild(oZip);
+      fMode.value = c.download_mode === "zip" ? "zip" : "raw";
 
       const row = (zh, input, browse) => $el("div.row", {}, [
         bindText($el("label"), zh), input,
@@ -598,6 +615,10 @@ app.registerExtension({
             bindText($el("label"), "下载目录"),
             fDlDir,
             bindText($el("button.asm-btn", { onclick: () => pickDlDir(fDlDir) }), "浏览…"),
+          ]),
+          $el("div.row", {}, [
+            bindText($el("label"), "下载方式"),
+            fMode,
           ]),
           $el("div.chk", {}, [fAuto, bindText($el("span"), "自动归档新产物")]),
           $el("div.chk", {}, [fAutoDl, bindText($el("span"), "自动下载新产物")]),
@@ -622,6 +643,7 @@ app.registerExtension({
           auto_archive: fAuto.checked,
           auto_download: fAutoDl.checked,
           archive_existing: fExisting.checked,
+          download_mode: fMode.value,
           thumb_width: Number(fThumb.value),
           interval_sec: Number(fInterval.value),
         };
@@ -717,10 +739,17 @@ app.registerExtension({
         const crc = crc32(data);
         const lh = new Uint8Array(30 + nameB.length);
         lh.set([0x50, 0x4B, 0x03, 0x04], 0);
-        lh.set(u16(20), 4); lh.set(u16(0x0800), 6); lh.set(u16(0), 8); lh.set(u16(0), 10);
-        lh.set(u16(tm), 12); lh.set(u16(dt), 14);
-        lh.set(u32(crc), 16); lh.set(u32(data.length), 20); lh.set(u32(data.length), 24);
-        lh.set(u16(nameB.length), 26); lh.set(u16(0), 28);
+        // 本地头字段偏移: 10=time 12=date 14=crc 18=csize 22=usize 26=namelen 28=extralen
+        lh.set(u16(20), 4);
+        lh.set(u16(0x0800), 6);
+        lh.set(u16(0), 8);
+        lh.set(u16(tm), 10);
+        lh.set(u16(dt), 12);
+        lh.set(u32(crc), 14);
+        lh.set(u32(data.length), 18);
+        lh.set(u32(data.length), 22);
+        lh.set(u16(nameB.length), 26);
+        lh.set(u16(0), 28);
         lh.set(nameB, 30);
         const lhBlob = new Blob([lh, data]);
         central.push({ nameB, crc, size: data.length, offset });
@@ -738,7 +767,7 @@ app.registerExtension({
         ch.set(u32(c.offset), 42);
         ch.set(c.nameB, 46);
         parts.push(new Blob([ch]));
-        offset += ch.length;
+        offset += ch.length; // Uint8Array 只有 length；用 .size 会得 undefined → NaN → EOCD cd_size 写成 0
       }
       const cdSize = offset - cdStart;
       const eocd = new Uint8Array(22);
@@ -809,11 +838,15 @@ app.registerExtension({
         statusMsg(LANG === "zh" ? ("选择目录失败: " + (e && e.message ? e.message : e)) : ("Pick folder failed: " + (e && e.message ? e.message : e)));
       }
     }
-    async function saveBlobToLocal(blob, fileName) {
+    async function saveBlobToLocal(blob, fileName, subdir) {
       // 优先写入已授权的本地目录（File System Access API），否则回退浏览器下载
       if (dlDirHandle && dlDirHandle.getFileHandle) {
         try {
-          const fh = await dlDirHandle.getFileHandle(fileName, { create: true });
+          let dir = dlDirHandle;
+          if (subdir && dlDirHandle.getDirectoryHandle) {
+            try { dir = await dlDirHandle.getDirectoryHandle(subdir, { create: true }); } catch (e) { dir = dlDirHandle; }
+          }
+          const fh = await dir.getFileHandle(fileName, { create: true });
           const w = await fh.createWritable();
           await w.write(blob);
           await w.close();
@@ -825,27 +858,50 @@ app.registerExtension({
     }
     function baseName(p) { const i = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\")); return i >= 0 ? p.slice(i + 1) : p; }
     function safeName(n) { return String(n || "asset").replace(/[\\/:*?"<>|]/g, "_"); }
-    async function fetchAssetBytes(relPath) {
-      const res = await fetch("./asset/file?p=" + encodeURIComponent(relPath));
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      return new Uint8Array(await res.arrayBuffer());
+    async function fetchAssetBytes(relPath, tries) {
+      tries = tries || 3;
+      let lastErr = null;
+      for (let i = 0; i < tries; i++) {
+        try {
+          const res = await fetch("./asset/file?p=" + encodeURIComponent(relPath), { cache: "no-store" });
+          if (res.status === 404) return null; // 该目录没有此文件, 正常跳过
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          return new Uint8Array(await res.arrayBuffer());
+        } catch (e) {
+          lastErr = e;
+          if (i < tries - 1) await new Promise((r) => setTimeout(r, 300 * (i + 1)));
+        }
+      }
+      throw lastErr || new Error("fetch failed");
     }
-    async function buildZipForRuns(list) {
+    const RUN_FILE_CANDIDATES = ["workflow.json", "info.json", "prompt.txt", "thumb.jpg"];
+    async function gatherEntries(list) {
       const entries = [];
       const used = new Set();
+      const failed = [];
+      const push = (base, bytes, subdir) => {
+        if (!bytes || !bytes.length) return;
+        let nm = base, dup = 1;
+        while (used.has(nm)) { nm = base.replace(/(\.\w+)?$/, "_" + (dup++) + "$1"); }
+        used.add(nm);
+        entries.push({ path: nm, bytes: bytes, subdir: subdir || "" });
+      };
       for (const r of list) {
+        const runBase = safeName(r.name);
+        // 后端若下发 r.files 就以其为准；否则按已知约定逐个尝试（缺失的 404 自动跳过）
+        const names = (Array.isArray(r.files) && r.files.length)
+          ? r.files.slice()
+          : [r.media].concat(RUN_FILE_CANDIDATES).filter(Boolean);
+        for (const fn of names) {
+          if (!fn) continue;
+          const rel = r.dir + "/" + fn;
+          try {
+            push(runBase + "_" + baseName(fn), await fetchAssetBytes(rel), runBase);
+          } catch (e) {
+            failed.push(rel + "  （" + (e && e.message ? e.message : e) + "）");
+          }
+        }
         try {
-          if (r.media) {
-            const base = safeName(r.name) + "_" + baseName(r.media);
-            let nm = base, dup = 1;
-            while (used.has(nm)) { nm = base.replace(/(\.\w+)?$/, "_" + (dup++) + "$1"); }
-            used.add(nm);
-            entries.push({ path: nm, bytes: await fetchAssetBytes(r.dir + "/" + r.media) });
-          }
-          if (r.has_workflow) {
-            const nm = safeName(r.name) + "_workflow.json";
-            if (!used.has(nm)) { used.add(nm); entries.push({ path: nm, bytes: await fetchAssetBytes(r.dir + "/workflow.json") }); }
-          }
           const info = [
             "Name: " + r.name,
             "Time: " + (r.time || ""),
@@ -854,37 +910,87 @@ app.registerExtension({
             (r.models && r.models.length ? "\nModels: " + r.models.join(", ") : ""),
             (r.params ? "\nParams: " + Object.keys(r.params).map(k => k + "=" + r.params[k]).join(" · ") : ""),
           ].filter(Boolean).join("\n");
-          const nm = safeName(r.name) + "_info.txt";
-          if (!used.has(nm)) { used.add(nm); entries.push({ path: nm, bytes: new TextEncoder().encode(info) }); }
-        } catch (e) { console.error("AssetManager download failed for", r.dir, e); }
+          push(runBase + "_info.txt", new TextEncoder().encode(info));
+        } catch (e) {}
       }
-      return makeZip(entries);
+      return { entries, failed };
     }
-    async function downloadRuns(list, label) {
+    function dlLabel() { return (curConfig && curConfig.config && curConfig.config.download_mode === "zip") ? t("正在打包下载…") : t("正在保存…"); }
+    async function downloadRuns(list) {
       if (!list || !list.length) { statusMsg(t("没有匹配的产物")); return; }
-      statusMsg(label + list.length + t(" 个文件, 保存到本地浏览器下载目录"));
-      const blob = await buildZipForRuns(list);
-      const zipName = "comfyui_assets_" + new Date().toISOString().slice(0, 10) + ".zip";
-      const mode = await saveBlobToLocal(blob, zipName);
-      if (mode === "dir" && dlDirHandle && dlDirHandle.name) {
-        statusMsg(LANG === "zh" ? ("✅ 已下载 " + list.length + " 个资产到本地目录: " + dlDirHandle.name) : ("✅ Downloaded " + list.length + " assets to local folder: " + dlDirHandle.name));
+      const cfg = curConfig && curConfig.config;
+      let zipMode = !!(cfg && cfg.download_mode === "zip");
+      // 「逐个保存」需要本地目录授权：浏览器会拦截连续多次下载。
+      // 这里在用户点击后第一时间弹目录选择（保住用户手势），授权成功就不必打包了。
+      if (!zipMode && list.length > 1 && !(dlDirHandle && dlDirHandle.getFileHandle) && window.showDirectoryPicker) {
+        try {
+          const h = await window.showDirectoryPicker({ mode: "readwrite" });
+          if (h) { dlDirHandle = h; try { await idbSet("dir", h); } catch (e) {} }
+        } catch (e) { /* 用户取消/浏览器不允许 → 下面回退为单个 ZIP */ }
+      }
+      const gathered = await gatherEntries(list);
+      const entries = gathered.entries;
+      const failed = gathered.failed;
+      if (!entries.length) { statusMsg(t("该资产下载失败")); return; }
+      if (failed.length) {
+        entries.push({ path: "_download_errors.txt", bytes: new TextEncoder().encode("以下文件未能下载，未包含在内：\n\n" + failed.join("\n") + "\n") });
+      }
+      // 浏览器会拦截"连续多次自动下载"（只放行第一个），没授权本地目录时裸模式必然丢文件 → 强制单包 ZIP
+      const canWriteDir = !!(dlDirHandle && dlDirHandle.getFileHandle);
+      let forcedZip = false;
+      if (!zipMode && !canWriteDir) { zipMode = true; forcedZip = true; }
+      const fileCount = entries.length - (failed.length ? 1 : 0);
+      statusMsg(zipMode ? (dlLabel() + fileCount + (LANG === "zh" ? " 个文件, 保存到本地浏览器下载目录" : " files")) : (dlLabel() + fileCount + (LANG === "zh" ? " 个文件" : " files")));
+      if (zipMode) {
+        const blob = await makeZip(entries);
+        const zipName = "comfyui_assets_" + new Date().toISOString().slice(0, 10) + ".zip";
+        const mode = await saveBlobToLocal(blob, zipName);
+        const warn = failed.length ? (LANG === "zh" ? ("（另有 " + failed.length + " 个失败，见包内 _download_errors.txt）") : (" (" + failed.length + " failed, see _download_errors.txt)")) : "";
+        if (mode === "dir" && dlDirHandle && dlDirHandle.name) {
+          statusMsg(LANG === "zh" ? ("✅ 已保存 " + fileCount + " 个文件到本地目录: " + dlDirHandle.name + warn) : ("✅ Saved " + fileCount + " files to local folder: " + dlDirHandle.name + warn));
+        } else if (forcedZip) {
+          statusMsg(LANG === "zh" ? ("⚠ 浏览器拦截连续多次下载，已自动改为单个 ZIP（" + fileCount + " 个文件）" + warn) : ("⚠ Browser blocks repeated downloads; saved one ZIP (" + fileCount + " files)" + warn));
+        } else {
+          statusMsg((LANG === "zh" ? ("✅ 已开始下载: " + fileCount + " 个文件, 保存到本地浏览器下载目录") : ("✅ Download started: " + fileCount + " files, saved to the browser download folder")) + warn);
+        }
       } else {
-        statusMsg(t("✅ 已开始下载: ") + list.length + t(" 个文件, 保存到本地浏览器下载目录"));
+        let ok = 0, lastMode = "browser";
+        const saveFailed = [];
+        for (const e of entries) {
+          if (e.path === "_download_errors.txt") continue;
+          try {
+            const mode = await saveBlobToLocal(new Blob([e.bytes]), e.path, e.subdir);
+            if (mode === "dir") lastMode = "dir";
+            ok++;
+          } catch (err) { saveFailed.push(e.path); console.error("AssetManager save failed:", e.path, err); }
+          await new Promise((r) => setTimeout(r, 60)); // 给文件系统/浏览器一点喘息
+        }
+        const dest = (lastMode === "dir" && dlDirHandle && dlDirHandle.name)
+          ? (LANG === "zh" ? ("本地目录: " + dlDirHandle.name) : ("local folder: " + dlDirHandle.name))
+          : t("（浏览器下载目录）");
+        const total = fileCount;
+        const bad = entries.length - fileCount + saveFailed.length;
+        if (bad === 0) {
+          statusMsg(t("✅ 已保存 ") + ok + (LANG === "zh" ? " 个文件到" : " files to ") + dest);
+        } else {
+          statusMsg(LANG === "zh" ? ("⚠️ 已保存 " + ok + "/" + total + " 个文件到 " + dest + "，失败 " + bad + " 个") : ("⚠️ Saved " + ok + "/" + total + " files to " + dest + ", " + bad + " failed"));
+        }
       }
     }
     async function confirmDownload() {
       const list = filtered(runs);
       if (!list.length) { statusMsg(t("没有匹配的产物")); return; }
+      const zipMode = !!(curConfig && curConfig.config && curConfig.config.download_mode === "zip");
       const m = $el("div.asm-modal");
       m.style.display = "flex";
       const pn = $el("div.pn", {}, [
         $el("button.x", { textContent: "✕", onclick: () => m.remove() }),
         bindText($el("h2", { style: { margin: "0 0 12px", fontSize: "15px" } }), "⬇ 下载确认"),
-        bindText($el("div", { style: { fontSize: "13px", marginBottom: "6px" } }), "将打包下载以下内容:"),
-        bindText($el("div", { style: { fontSize: "13px", color: "var(--descrip-text,#aaa)", marginBottom: "12px", lineHeight: "1.8" } }), "• 当前列表中的全部资产（图片/视频/元数据/工作流）", "innerHTML"),
+        bindText($el("div", { style: { fontSize: "13px", marginBottom: "6px" } }), zipMode ? "将打包下载以下内容:" : "将逐个保存以下文件:"),
+        bindText($el("div", { style: { fontSize: "13px", color: "var(--descrip-text,#aaa)", marginBottom: "12px", lineHeight: "1.8" } }), zipMode ? "• 当前列表中的全部资产（图片/视频/元数据/工作流）, 打包为单个 ZIP" : "• 当前列表中的全部资产（图片/视频/元数据/工作流）, 逐个原样保存", "innerHTML"),
         bindText($el("div", { style: { fontSize: "13px", marginBottom: "14px", wordBreak: "break-all" } }), t("下载数量: ") + list.length),
         $el("div.btns", {}, [
-          bindText($el("button.asm-btn.primary", { onclick: () => { m.remove(); downloadRuns(list, t("正在打包下载…")); } }), "确定下载"),
+          bindText($el("button.asm-btn.primary", { onclick: () => { m.remove(); downloadRuns(list); } }), "确定下载"),
           bindText($el("button.asm-btn", { onclick: () => m.remove() }), "取消"),
         ]),
       ]);
@@ -896,7 +1002,7 @@ app.registerExtension({
       if (!selected.size) return;
       const set = new Set(selected);
       const list = runs.filter(r => set.has(r.dir));
-      await downloadRuns(list, t("正在打包下载…"));
+      await downloadRuns(list);
     }
     async function doScan() {
       statusMsg(t("扫描中…"));
@@ -977,7 +1083,7 @@ app.registerExtension({
         for (const r of fresh) doneSet.add(r.dir);
         localStorage.setItem("am_auto_dl_done", JSON.stringify([...doneSet]));
         statusMsg(t("自动下载已启用: 新产物将自动保存到浏览器下载目录"));
-        await downloadRuns(fresh, t("正在打包下载…"));
+        await downloadRuns(fresh);
       } catch (e) { console.error("AssetManager auto-download failed:", e); }
     }
 

@@ -417,6 +417,10 @@ def list_runs(archive_dir):
                 info = json.loads(info_file.read_text(encoding="utf-8"))
             except Exception:
                 continue
+            try:
+                files = sorted(p.name for p in run_dir.iterdir() if p.is_file())
+            except OSError:
+                files = []
             runs.append({
                 "id": info.get("run_id") or run_dir.name,
                 "date": (info.get("generated_at") or "")[:10],
@@ -425,6 +429,7 @@ def list_runs(archive_dir):
                 "kind": info.get("kind") or "image",
                 "media": info.get("media"),
                 "thumb": info.get("thumb"),
+                "files": files,
                 "dir": run_dir.relative_to(arch).as_posix(),
                 "positive": info.get("positive") or "",
                 "negative": info.get("negative") or "",
