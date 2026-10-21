@@ -922,6 +922,9 @@ app.registerExtension({
       let zipMode = !!(cfg && cfg.download_mode === "zip");
       // 「逐个保存」需要本地目录授权：浏览器会拦截连续多次下载。
       // 这里在用户点击后第一时间弹目录选择（保住用户手势），授权成功就不必打包了。
+      if (!zipMode && list.length > 1 && !(dlDirHandle && dlDirHandle.getFileHandle)) {
+        if (!dlDirHandle) { try { await loadDlHandle(); } catch (e) {} } // 刷新后先尝试恢复已授权目录
+      }
       if (!zipMode && list.length > 1 && !(dlDirHandle && dlDirHandle.getFileHandle) && window.showDirectoryPicker) {
         try {
           const h = await window.showDirectoryPicker({ mode: "readwrite" });
