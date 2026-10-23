@@ -67,6 +67,14 @@ const STYLE = `
 .asm-modal textarea { width:100%; height:130px; background:var(--comfy-input-bg,#333); border:1px solid var(--border-color,#444); color:var(--input-text,#eee); border-radius:6px; padding:8px; font-size:12px; margin-top:6px; }
 .asm-modal .btns { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
 .asm-modal .x { position:absolute; top:8px; right:12px; background:none; border:none; color:var(--fg-color,#eee); font-size:20px; cursor:pointer; z-index:2; }
+/* 预览翻页 */
+.asm-modal .media { display:flex; align-items:center; justify-content:center; min-height:100px; background:#000; border-radius:8px; overflow:hidden; }
+.asm-modal .pvbar { position:absolute; top:10px; left:50%; transform:translateX(-50%); z-index:3; background:rgba(0,0,0,.66); border:1px solid rgba(255,255,255,.16); border-radius:12px; padding:3px 12px; font-size:11px; color:#eee; letter-spacing:.5px; white-space:nowrap; pointer-events:none; }
+.asm-modal .nav { position:absolute; top:50%; transform:translateY(-50%); width:48px; height:48px; padding:0; border-radius:50%; border:1px solid rgba(255,255,255,.22); background:rgba(0,0,0,.55); color:#fff; font-size:22px; line-height:1; display:flex; align-items:center; justify-content:center; cursor:pointer; z-index:3; }
+.asm-modal .nav:hover { background:rgba(91,140,255,.85); border-color:#5b8cff; }
+.asm-modal .nav.prev { left:16px; }
+.asm-modal .nav.next { right:16px; }
+@media (max-width: 720px){ .asm-modal .nav { width:38px; height:38px; font-size:18px; } .asm-modal .nav.prev { left:6px; } .asm-modal .nav.next { right:6px; } }
 /* 设置 */
 .asm-set { margin:4px 0; }
 .asm-set .row { display:flex; gap:8px; align-items:center; margin:8px 0; font-size:13px; }
@@ -123,6 +131,9 @@ app.registerExtension({
       "下载 workflow.json": "Download workflow.json",
       "🗑 从硬盘删除": "🗑 Delete from disk",
       "💡 下载 workflow.json 后拖进 ComfyUI 画布, 即可完整还原整套工作流(节点+连线)。": "💡 Drag the downloaded workflow.json onto the ComfyUI canvas to fully restore the workflow (nodes + links).",
+      "上一张 (←)": "Previous (←)",
+      "下一张 (→)": "Next (→)",
+      "💡 ← / → 切换上/下一张图片, Esc 关闭; 下载 workflow.json 后拖进 ComfyUI 画布, 即可完整还原整套工作流(节点+连线)。": "💡 ← / → to switch images, Esc to close; drag the downloaded workflow.json onto the ComfyUI canvas to fully restore the workflow.",
       "已复制": "Copied",
       "该产物未携带 workflow 元数据": "This asset has no workflow metadata",
       "下载失败": "Download failed",
@@ -369,7 +380,7 @@ app.registerExtension({
     document.body.appendChild(overlay);
 
     // ---------- 渲染 ----------
-    function renderCard(r, container) {
+    function renderCard(r, container, list) {
       const card = $el("div.asm-card");
       if (selected.has(r.dir)) card.classList.add("selected");
       const thumb = r.thumb ? mediaUrl(r.dir, r.thumb) : mediaUrl(r.dir, r.media);
@@ -395,7 +406,7 @@ app.registerExtension({
           if (!selected.has(r.dir) && mark) mark.remove();
           updateBatchBtn();
         } else {
-          openPreview(r);
+          openPreview(r, list);
         }
       };
       container.appendChild(card);
@@ -406,7 +417,7 @@ app.registerExtension({
       gridEl.innerHTML = "";
       countEl.textContent = list.length + " / " + runs.length;
       if (!list.length) { gridEl.appendChild($el("div.asm-empty", { textContent: t("没有匹配的产物") })); return; }
-      for (const r of list) renderCard(r, gridEl);
+      for (const r of list) renderCard(r, gridEl, list);
     }
 
     function countOf(d) {
@@ -461,7 +472,7 @@ app.registerExtension({
       calListCards.innerHTML = "";
       if (selDate && base === 0) calListCards.appendChild($el("div.asm-empty", { textContent: t("当天没有归档产物") }));
       else if (!list.length && selDate) calListCards.appendChild($el("div.asm-empty", { textContent: t("当天没有匹配当前筛选的产物") }));
-      else for (const r of list) renderCard(r, calListCards);
+      else for (const r of list) renderCard(r, calListCards, list);
     }
 
     function refresh() {
@@ -512,38 +523,111 @@ app.registerExtension({
       }
     }
 
-    // ---------- 预览 ----------
-    function openPreview(r) {
-      const m = $el("div.asm-modal");
-      m.style.display = "flex";
+    // ---------- 预览(大图内 ←/→ 快速切换) ----------
+    let pv = null; // { m, step } —— 当前打开的大图预览
+
+    function previewMedia(r) {
       const full = mediaUrl(r.dir, r.media);
-      const media = r.kind === "video"
+      return r.kind === "video"
         ? $el("video", { src: full, controls: true, autoplay: true, muted: true, playsinline: true })
         : $el("img", { src: full });
-      const ta = $el("textarea", { textContent: (r.positive || "") + (r.negative ? "\n\nNegative prompt: " + r.negative : "") });
-      const models = (r.models || []).join(", ") || "—";
-      const params = Object.keys(r.params || {}).map(k => k + "=" + r.params[k]).join(" · ") || "—";
+    }
+
+    function closePreview() {
+      if (pv && pv.m) pv.m.remove();
+      pv = null;
+    }
+
+    function openPreview(r, listArg) {
+      // 切换范围 = 用户当前看到的那一批(网格=筛选结果; 日历=当天列表)
+      const list = (Array.isArray(listArg) && listArg.length ? listArg : filtered(runs)).slice();
+      let idx = list.findIndex(x => x.dir === r.dir);
+      if (idx < 0) return;
+      if (pv) closePreview();
+
+      const m = $el("div.asm-modal");
+      m.style.display = "flex";
+      const mediaBox = $el("div.media");
+      const rowsEl = $el("div.rows");
+      const ta = $el("textarea");
+      const pagerEl = $el("div.pvbar");
+      const prevBtn = $el("button.nav.prev", { textContent: "‹" });
+      const nextBtn = $el("button.nav.next", { textContent: "›" });
+      prevBtn.title = t("上一张 (←)");
+      nextBtn.title = t("下一张 (→)");
+      prevBtn.onclick = () => step(-1);
+      nextBtn.onclick = () => step(1);
+
+      function paramsOf(x) {
+        return Object.keys(x.params || {}).map(k => k + "=" + x.params[k]).join(" · ") || "—";
+      }
+      // 预加载相邻图片, 切换时基本无等待
+      function preload(i) {
+        for (const k of [i - 1, i + 1]) {
+          const x = list[(k + list.length) % list.length];
+          if (x && x.kind === "image") { try { const im = new Image(); im.src = mediaUrl(x.dir, x.media); } catch (e) {} }
+        }
+      }
+      function show(i) {
+        idx = ((i % list.length) + list.length) % list.length;
+        const cur = list[idx];
+        mediaBox.innerHTML = "";
+        mediaBox.appendChild(previewMedia(cur));
+        ta.value = (cur.positive || "") + (cur.negative ? "\n\nNegative prompt: " + cur.negative : "");
+        rowsEl.innerHTML = "";
+        rowsEl.appendChild(labeledRow([{ zh: "来源: ", text: cur.name }]));
+        rowsEl.appendChild(labeledRow([{ zh: "时间: ", text: cur.time + " | " }, { zh: "模型/LoRA: ", text: (cur.models || []).join(", ") || "—" }]));
+        rowsEl.appendChild(labeledRow([{ zh: "参数: ", text: paramsOf(cur) }]));
+        pagerEl.textContent = (idx + 1) + " / " + list.length;
+        const solo = list.length < 2;
+        prevBtn.style.display = solo ? "none" : "";
+        nextBtn.style.display = solo ? "none" : "";
+        pagerEl.style.display = solo ? "none" : "";
+        delBtn.onclick = () => doDelete(cur, m, () => {
+          const at = list.indexOf(cur);
+          if (at >= 0) list.splice(at, 1);
+          if (!list.length) { closePreview(); return; }
+          show(Math.min(at, list.length - 1));
+        });
+        preload(idx);
+      }
+      function step(d) { if (list.length > 1) show(idx + d); }
+
+      const copyBtn = bindText($el("button.asm-btn", { onclick: () => { ta.select(); navigator.clipboard?.writeText(ta.value).then(() => statusMsg(t("已复制"))); } }), "复制提示词");
+      const wfBtn = bindText($el("button.asm-btn.primary", { onclick: () => downloadWorkflow(list[idx]) }), "下载 workflow.json");
+      const delBtn = bindText($el("button.asm-btn.danger"), "🗑 从硬盘删除");
+      const hintEl = $el("div", { style: { fontSize: "11px", color: "var(--descrip-text,#aaa)", marginTop: "8px" } });
+      hintEl.textContent = t("💡 ← / → 切换上/下一张图片, Esc 关闭; 下载 workflow.json 后拖进 ComfyUI 画布, 即可完整还原整套工作流(节点+连线)。");
+
       const pn = $el("div.pn", {}, [
-        $el("button.x", { textContent: "✕", onclick: () => m.remove() }),
-        media,
-        $el("div.rows", {}, [
-          labeledRow([{ zh: "来源: ", text: r.name }]),
-          labeledRow([{ zh: "时间: ", text: r.time + " | " }, { zh: "模型/LoRA: ", text: models }]),
-          labeledRow([{ zh: "参数: ", text: params }]),
-        ]),
+        $el("button.x", { textContent: "✕", onclick: () => closePreview() }),
+        mediaBox,
+        rowsEl,
         bindText($el("label", { style: { fontSize: "12px" } }), "提示词"),
         ta,
-        $el("div.btns", {}, [
-          bindText($el("button.asm-btn", { onclick: () => { ta.select(); navigator.clipboard?.writeText(ta.value).then(() => statusMsg(t("已复制"))); } }), "复制提示词"),
-          bindText($el("button.asm-btn.primary", { onclick: () => downloadWorkflow(r) }), "下载 workflow.json"),
-          bindText($el("button.asm-btn.danger", { onclick: () => doDelete(r, m) }), "🗑 从硬盘删除"),
-        ]),
-        bindText($el("div", { style: { fontSize: "11px", color: "var(--descrip-text,#aaa)", marginTop: "8px" } }), "💡 下载 workflow.json 后拖进 ComfyUI 画布, 即可完整还原整套工作流(节点+连线)。"),
+        $el("div.btns", {}, [copyBtn, wfBtn, delBtn]),
+        hintEl,
       ]);
-      m.appendChild($el("div.bk", { onclick: () => m.remove() }));
+      m.appendChild($el("div.bk", { onclick: () => closePreview() }));
       m.appendChild(pn);
+      m.appendChild(pagerEl);
+      m.appendChild(prevBtn);
+      m.appendChild(nextBtn);
       document.body.appendChild(m);
+      pv = { m, step };
+      show(idx);
     }
+
+    // 预览打开时: ←/→ 翻页, Esc 关闭(文本域内方向键仍用于移光标)
+    function onPreviewKey(e) {
+      if (!pv) return;
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closePreview(); return; }
+      const tag = (e.target && e.target.tagName) || "";
+      if (tag === "TEXTAREA" || tag === "INPUT" || tag === "SELECT") return;
+      if (e.key === "ArrowLeft") { e.preventDefault(); e.stopPropagation(); pv.step(-1); }
+      else if (e.key === "ArrowRight") { e.preventDefault(); e.stopPropagation(); pv.step(1); }
+    }
+    document.addEventListener("keydown", onPreviewKey, true);
 
     function downloadWorkflow(r) {
       if (!r.has_workflow) { statusMsg(t("该产物未携带 workflow 元数据")); return; }
@@ -556,7 +640,7 @@ app.registerExtension({
         }).catch(() => statusMsg(t("下载失败")));
     }
 
-    async function doDelete(r, modal) {
+    async function doDelete(r, modal, onDone) {
       const msg = LANG === "zh"
         ? ("确定要从硬盘永久删除该产物吗?\n\n" + r.name + "\n\n将同时删除归档副本和 output 中的原始文件, 无法恢复。")
         : ("Permanently delete this asset from disk?\n\n" + r.name + "\n\nThis also deletes the archive copy and the original file in output. This cannot be undone.");
@@ -564,9 +648,10 @@ app.registerExtension({
       const res = await fetch("./asset/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ run_id: r.dir }) });
       const d = await res.json();
       if (d.ok) {
-        modal.remove();
         runs = runs.filter(x => x.dir !== r.dir);
         rebuildByDate(); refresh(); statusMsg(t("已从硬盘删除"));
+        if (typeof onDone === "function") onDone();
+        else if (modal) modal.remove();
       } else statusMsg(t("删除失败: ") + (terr(d.error) || t("未知错误")));
     }
 
@@ -1041,6 +1126,7 @@ app.registerExtension({
       pollTimer = setInterval(pollRefresh, 8000);
     }
     function closePanel() {
+      closePreview();
       overlay.style.display = "none";
       if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     }
