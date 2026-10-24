@@ -18,6 +18,8 @@ An in-panel **asset manager** for ComfyUI that auto-archives every image/video y
   **大图翻页** — 大图预览里按 `←` / `→`（或屏幕左右箭头）直接翻当前这批图，不用关掉再点下一张；循环切换、显示 `n / 总数`、`Esc` 关闭、相邻图预加载。
 - **Batch delete** — multi-select and delete from disk in one click (archive copy + original output file); single delete too.<br>
   **批量删除** — 多选勾选后一键从硬盘删除（归档副本 + output 原始文件），单个删除也可。
+- **Range select** — in multi-select mode hold `Shift` and click another card to select everything in between (works in grid and calendar-day lists; `Shift`-click also switches multi-select on).<br>
+  **连选一段** — 多选模式下按住 `Shift` 再点另一张，两次点击之间的图全部选中（网格与日历当天列表都生效；未开多选时 `Shift`+点击会自动进入多选）。
 - **Live refresh** — the panel auto-syncs every 8 seconds; files manually copied into the output directory get archived, and manual deletions disappear automatically.<br>
   **实时刷新** — 面板每 8 秒自动同步，手动复制进输出目录的文件也会被归档、手动删除也会自动消失。
 - **Output directory switching** — change the output directory in settings; new assets save there instantly and it's **restored automatically after ComfyUI restarts**.<br>

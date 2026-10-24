@@ -67,13 +67,14 @@ const STYLE = `
 .asm-modal textarea { width:100%; height:130px; background:var(--comfy-input-bg,#333); border:1px solid var(--border-color,#444); color:var(--input-text,#eee); border-radius:6px; padding:8px; font-size:12px; margin-top:6px; }
 .asm-modal .btns { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
 .asm-modal .x { position:absolute; top:8px; right:12px; background:none; border:none; color:var(--fg-color,#eee); font-size:20px; cursor:pointer; z-index:2; }
-/* 预览翻页 */
+/* 预览翻页(箭头/计数贴图片与面板内缘, 不贴屏幕边) */
+.asm-modal .mediaWrap { position:relative; }
 .asm-modal .media { display:flex; align-items:center; justify-content:center; min-height:100px; background:#000; border-radius:8px; overflow:hidden; }
-.asm-modal .pvbar { position:absolute; top:10px; left:50%; transform:translateX(-50%); z-index:3; background:rgba(0,0,0,.66); border:1px solid rgba(255,255,255,.16); border-radius:12px; padding:3px 12px; font-size:11px; color:#eee; letter-spacing:.5px; white-space:nowrap; pointer-events:none; }
+.asm-modal .pvbar { position:absolute; top:8px; left:50%; transform:translateX(-50%); z-index:3; background:rgba(0,0,0,.66); border:1px solid rgba(255,255,255,.16); border-radius:12px; padding:3px 12px; font-size:11px; color:#eee; letter-spacing:.5px; white-space:nowrap; pointer-events:none; }
 .asm-modal .nav { position:absolute; top:50%; transform:translateY(-50%); width:48px; height:48px; padding:0; border-radius:50%; border:1px solid rgba(255,255,255,.22); background:rgba(0,0,0,.55); color:#fff; font-size:22px; line-height:1; display:flex; align-items:center; justify-content:center; cursor:pointer; z-index:3; }
 .asm-modal .nav:hover { background:rgba(91,140,255,.85); border-color:#5b8cff; }
-.asm-modal .nav.prev { left:16px; }
-.asm-modal .nav.next { right:16px; }
+.asm-modal .nav.prev { left:10px; }
+.asm-modal .nav.next { right:10px; }
 @media (max-width: 720px){ .asm-modal .nav { width:38px; height:38px; font-size:18px; } .asm-modal .nav.prev { left:6px; } .asm-modal .nav.next { right:6px; } }
 /* 设置 */
 .asm-set { margin:4px 0; }
@@ -133,6 +134,8 @@ app.registerExtension({
       "💡 下载 workflow.json 后拖进 ComfyUI 画布, 即可完整还原整套工作流(节点+连线)。": "💡 Drag the downloaded workflow.json onto the ComfyUI canvas to fully restore the workflow (nodes + links).",
       "上一张 (←)": "Previous (←)",
       "下一张 (→)": "Next (→)",
+      "多选模式: 点击切换选中, Shift+点击连选一段": "Multi-select: click to toggle, Shift+click to select a range",
+      "已退出多选": "Exited multi-select",
       "💡 ← / → 切换上/下一张图片, Esc 关闭; 下载 workflow.json 后拖进 ComfyUI 画布, 即可完整还原整套工作流(节点+连线)。": "💡 ← / → to switch images, Esc to close; drag the downloaded workflow.json onto the ComfyUI canvas to fully restore the workflow.",
       "已复制": "Copied",
       "该产物未携带 workflow 元数据": "This asset has no workflow metadata",
@@ -248,6 +251,7 @@ app.registerExtension({
     let view = "grid", kind = "all", selDate = null, calYear = 0, calMonth = 0;
     let multi = false;
     const selected = new Set();
+    let selAnchor = null; // 多选连选锚点(上次点中的 dir)
     let pollTimer = null;
     let curConfig = {};
 
@@ -396,18 +400,31 @@ app.registerExtension({
         $el("div.pr", { textContent: (r.positive || "").slice(0, 160) || t("(未检测到提示词)") }),
         r.models && r.models.length ? $el("div.mo", { textContent: r.models.join(" · ") }) : null,
       ].filter(Boolean)));
-      card.onclick = () => {
-        if (multi) {
-          if (selected.has(r.dir)) selected.delete(r.dir); else selected.add(r.dir);
-          card.classList.toggle("selected", selected.has(r.dir));
-          const m = card.querySelector(".m");
-          const mark = card.querySelector(".selmark");
-          if (selected.has(r.dir) && !mark) m.appendChild($el("div.selmark", { textContent: "✓" }));
-          if (!selected.has(r.dir) && mark) mark.remove();
-          updateBatchBtn();
-        } else {
-          openPreview(r, list);
+      card.onclick = (e) => {
+        const shift = !!(e && e.shiftKey);
+        // Shift+点击: 没开多选就自动进多选; 已开则从锚点连选到这一张
+        if (shift && !multi) { multi = true; multiBtn.classList.add("on"); statusMsg(t("多选模式: 点击切换选中, Shift+点击连选一段")); }
+        if (!multi) { openPreview(r, list); return; }
+        if (shift && selAnchor) {
+          const i0 = list.findIndex(x => x.dir === selAnchor);
+          const i1 = list.findIndex(x => x.dir === r.dir);
+          if (i0 >= 0 && i1 >= 0) {
+            const a = Math.min(i0, i1), b = Math.max(i0, i1);
+            for (let i = a; i <= b; i++) selected.add(list[i].dir);
+            selAnchor = r.dir;
+            updateBatchBtn();
+            refresh();
+            return;
+          }
         }
+        if (selected.has(r.dir)) selected.delete(r.dir); else selected.add(r.dir);
+        selAnchor = r.dir;
+        card.classList.toggle("selected", selected.has(r.dir));
+        const m = card.querySelector(".m");
+        const mark = card.querySelector(".selmark");
+        if (selected.has(r.dir) && !mark) m.appendChild($el("div.selmark", { textContent: "✓" }));
+        if (!selected.has(r.dir) && mark) mark.remove();
+        updateBatchBtn();
       };
       container.appendChild(card);
     }
@@ -497,8 +514,10 @@ app.registerExtension({
       multi = !multi;
       multiBtn.classList.toggle("on", multi);
       selected.clear();
+      selAnchor = null;
       updateBatchBtn();
       refresh();
+      statusMsg(multi ? t("多选模式: 点击切换选中, Shift+点击连选一段") : t("已退出多选"));
     }
     async function batchDelete() {
       if (!selected.size) return;
@@ -513,6 +532,7 @@ app.registerExtension({
         const delSet = new Set(ids);
         runs = runs.filter(x => !delSet.has(x.dir));
         selected.clear();
+        selAnchor = null;
         rebuildByDate();
         refresh();
         const done = LANG === "zh" ? ("已删除 " + d.deleted + " 项") : ("Deleted " + d.deleted + " items");
@@ -599,9 +619,10 @@ app.registerExtension({
       const hintEl = $el("div", { style: { fontSize: "11px", color: "var(--descrip-text,#aaa)", marginTop: "8px" } });
       hintEl.textContent = t("💡 ← / → 切换上/下一张图片, Esc 关闭; 下载 workflow.json 后拖进 ComfyUI 画布, 即可完整还原整套工作流(节点+连线)。");
 
+      const mediaWrap = $el("div.mediaWrap", {}, [mediaBox, pagerEl, prevBtn, nextBtn]);
       const pn = $el("div.pn", {}, [
         $el("button.x", { textContent: "✕", onclick: () => closePreview() }),
-        mediaBox,
+        mediaWrap,
         rowsEl,
         bindText($el("label", { style: { fontSize: "12px" } }), "提示词"),
         ta,
@@ -610,9 +631,6 @@ app.registerExtension({
       ]);
       m.appendChild($el("div.bk", { onclick: () => closePreview() }));
       m.appendChild(pn);
-      m.appendChild(pagerEl);
-      m.appendChild(prevBtn);
-      m.appendChild(nextBtn);
       document.body.appendChild(m);
       pv = { m, step };
       show(idx);
