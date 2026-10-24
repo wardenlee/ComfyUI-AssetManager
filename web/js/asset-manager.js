@@ -60,22 +60,23 @@ const STYLE = `
 /* 弹窗预览 */
 .asm-modal { position:fixed; inset:0; z-index:10001; display:none; align-items:center; justify-content:center; }
 .asm-modal .bk { position:absolute; inset:0; background:rgba(0,0,0,.72); }
-.asm-modal .pn { position:relative; background:var(--comfy-menu-bg,#202020); border:1px solid var(--border-color,#444); border-radius:12px; width:min(900px,94vw); max-height:92vh; overflow:auto; padding:18px; }
+.asm-modal .pn { position:relative; background:var(--comfy-menu-bg,#202020); border:1px solid var(--border-color,#444); border-radius:12px; width:min(1208px,94vw); height:92vh; max-height:92vh; box-sizing:border-box; display:flex; flex-direction:column; overflow:hidden; padding:18px; }
 .asm-modal video, .asm-modal img { max-width:100%; border-radius:8px; display:block; margin:0 auto; }
 .asm-modal video { max-height:55vh; }
 .asm-modal .rows { margin-top:12px; font-size:12px; color:var(--descrip-text,#aaa); }
-.asm-modal textarea { width:100%; height:130px; background:var(--comfy-input-bg,#333); border:1px solid var(--border-color,#444); color:var(--input-text,#eee); border-radius:6px; padding:8px; font-size:12px; margin-top:6px; }
+.asm-modal textarea { width:100%; height:72px; background:var(--comfy-input-bg,#333); border:1px solid var(--border-color,#444); color:var(--input-text,#eee); border-radius:6px; padding:8px; font-size:12px; margin-top:6px; }
 .asm-modal .btns { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
 .asm-modal .x { position:absolute; top:8px; right:12px; background:none; border:none; color:var(--fg-color,#eee); font-size:20px; cursor:pointer; z-index:2; }
 /* 预览翻页(箭头/计数贴图片与面板内缘, 不贴屏幕边) */
-.asm-modal .mediaWrap { position:relative; }
-.asm-modal .media { display:flex; align-items:center; justify-content:center; min-height:100px; background:#000; border-radius:8px; overflow:hidden; }
-.asm-modal .pvbar { position:absolute; top:8px; left:50%; transform:translateX(-50%); z-index:3; background:rgba(0,0,0,.66); border:1px solid rgba(255,255,255,.16); border-radius:12px; padding:3px 12px; font-size:11px; color:#eee; letter-spacing:.5px; white-space:nowrap; pointer-events:none; }
+.asm-modal .mediaWrap { position:relative; flex:1; min-height:0; margin-top:14px; padding:0 56px; }
+.asm-modal .media { display:flex; align-items:center; justify-content:center; width:100%; height:100%; min-height:100px; background:#000; border-radius:8px; overflow:hidden; }
+.asm-modal .media img, .asm-modal .media video { max-width:100%; max-height:100%; width:auto; height:auto; object-fit:contain; }
+.asm-modal .pvbar { position:absolute; top:2px; left:50%; transform:translateX(-50%); z-index:3; background:rgba(0,0,0,.66); border:1px solid rgba(255,255,255,.16); border-radius:12px; padding:3px 12px; font-size:11px; color:#eee; letter-spacing:.5px; white-space:nowrap; pointer-events:none; }
 .asm-modal .nav { position:absolute; top:50%; transform:translateY(-50%); width:48px; height:48px; padding:0; border-radius:50%; border:1px solid rgba(255,255,255,.22); background:rgba(0,0,0,.55); color:#fff; font-size:22px; line-height:1; display:flex; align-items:center; justify-content:center; cursor:pointer; z-index:3; }
 .asm-modal .nav:hover { background:rgba(91,140,255,.85); border-color:#5b8cff; }
-.asm-modal .nav.prev { left:10px; }
-.asm-modal .nav.next { right:10px; }
-@media (max-width: 720px){ .asm-modal .nav { width:38px; height:38px; font-size:18px; } .asm-modal .nav.prev { left:6px; } .asm-modal .nav.next { right:6px; } }
+.asm-modal .nav.prev { left:4px; }
+.asm-modal .nav.next { right:4px; }
+@media (max-width: 720px){ .asm-modal .nav { width:38px; height:38px; font-size:18px; } .asm-modal .nav.prev { left:2px; } .asm-modal .nav.next { right:2px; } }
 /* 设置 */
 .asm-set { margin:4px 0; }
 .asm-set .row { display:flex; gap:8px; align-items:center; margin:8px 0; font-size:13px; }
@@ -616,18 +617,16 @@ app.registerExtension({
       const copyBtn = bindText($el("button.asm-btn", { onclick: () => { ta.select(); navigator.clipboard?.writeText(ta.value).then(() => statusMsg(t("已复制"))); } }), "复制提示词");
       const wfBtn = bindText($el("button.asm-btn.primary", { onclick: () => downloadWorkflow(list[idx]) }), "下载 workflow.json");
       const delBtn = bindText($el("button.asm-btn.danger"), "🗑 从硬盘删除");
-      const hintEl = $el("div", { style: { fontSize: "11px", color: "var(--descrip-text,#aaa)", marginTop: "8px" } });
-      hintEl.textContent = t("💡 ← / → 切换上/下一张图片, Esc 关闭; 下载 workflow.json 后拖进 ComfyUI 画布, 即可完整还原整套工作流(节点+连线)。");
 
-      const mediaWrap = $el("div.mediaWrap", {}, [mediaBox, pagerEl, prevBtn, nextBtn]);
+      const mediaWrap = $el("div.mediaWrap", {}, [mediaBox, prevBtn, nextBtn]);
       const pn = $el("div.pn", {}, [
         $el("button.x", { textContent: "✕", onclick: () => closePreview() }),
+        pagerEl,
         mediaWrap,
         rowsEl,
         bindText($el("label", { style: { fontSize: "12px" } }), "提示词"),
         ta,
         $el("div.btns", {}, [copyBtn, wfBtn, delBtn]),
-        hintEl,
       ]);
       m.appendChild($el("div.bk", { onclick: () => closePreview() }));
       m.appendChild(pn);
