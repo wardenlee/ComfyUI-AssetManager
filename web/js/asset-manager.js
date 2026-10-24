@@ -137,6 +137,14 @@ app.registerExtension({
       "下一张 (→)": "Next (→)",
       "多选模式: 点击切换选中, Shift+点击连选一段": "Multi-select: click to toggle, Shift+click to select a range",
       "已退出多选": "Exited multi-select",
+      "下载包含 json/txt 与缩略图": "Include json/txt and thumbnails in downloads",
+      "下载保留每张图的文件夹": "Keep one folder per asset in downloads",
+      "• 当前列表中的图片/视频 + json/txt 元数据与缩略图": "• images/videos in the current list + json/txt metadata and thumbnails",
+      "• 当前列表中的图片/视频（不含 json/txt/缩略图）": "• images/videos in the current list (no json/txt/thumbnails)",
+      "，每张图一个文件夹": ", one folder per asset",
+      "，全部平铺在同一目录": ", everything flattened into one folder",
+      "，打包为单个 ZIP": ", packed into a single ZIP",
+      "，逐个原样保存": ", saved one by one",
       "💡 ← / → 切换上/下一张图片, Esc 关闭; 下载 workflow.json 后拖进 ComfyUI 画布, 即可完整还原整套工作流(节点+连线)。": "💡 ← / → to switch images, Esc to close; drag the downloaded workflow.json onto the ComfyUI canvas to fully restore the workflow.",
       "已复制": "Copied",
       "该产物未携带 workflow 元数据": "This asset has no workflow metadata",
@@ -701,6 +709,10 @@ app.registerExtension({
       fMode.appendChild(oRaw);
       fMode.appendChild(oZip);
       fMode.value = c.download_mode === "zip" ? "zip" : "raw";
+      const fMeta = $el("input", { type: "checkbox" });
+      fMeta.checked = c.download_include_metadata === true;
+      const fKeepFolders = $el("input", { type: "checkbox" });
+      fKeepFolders.checked = c.download_keep_folders === true;
 
       const row = (zh, input, browse) => $el("div.row", {}, [
         bindText($el("label"), zh), input,
@@ -722,6 +734,8 @@ app.registerExtension({
             bindText($el("label"), "下载方式"),
             fMode,
           ]),
+          $el("div.chk", {}, [fMeta, bindText($el("span"), "下载包含 json/txt 与缩略图")]),
+          $el("div.chk", {}, [fKeepFolders, bindText($el("span"), "下载保留每张图的文件夹")]),
           $el("div.chk", {}, [fAuto, bindText($el("span"), "自动归档新产物")]),
           $el("div.chk", {}, [fAutoDl, bindText($el("span"), "自动下载新产物")]),
           $el("div.chk", {}, [fExisting, bindText($el("span"), "归档安装前已有的产物")]),
@@ -731,7 +745,7 @@ app.registerExtension({
         $el("div.btns", {}, [
           bindText($el("button.asm-btn.primary", { onclick: saveSettings }), "保存设置"),
         ]),
-        bindText($el("div", { style: { fontSize: "11px", color: "var(--descrip-text,#aaa)", marginTop: "10px" } }), "改归档/下载目录后新产物进入新目录, 旧数据保留; 输出目录切换重启 ComfyUI 后仍生效; 自动归档/自动下载开关和扫描间隔即时生效。下载目录: 点「浏览…」可在系统对话框选择本地目录（授权后下载/自动下载直接写入该目录, 无需经过浏览器下载; 未授权时使用浏览器默认下载目录）。"),
+        bindText($el("div", { style: { fontSize: "11px", color: "var(--descrip-text,#aaa)", marginTop: "10px" } }), "下载默认只保存图片/视频本体并全部平铺（不下载 json/txt/缩略图, 不建每张图的文件夹）; 需要元数据或文件夹时勾选上面的两个开关。改归档/下载目录后新产物进入新目录, 旧数据保留; 输出目录切换重启 ComfyUI 后仍生效; 自动归档/自动下载开关和扫描间隔即时生效。下载目录: 点「浏览…」可在系统对话框选择本地目录（授权后下载/自动下载直接写入该目录, 无需经过浏览器下载; 未授权时使用浏览器默认下载目录）。"),
       ]);
       m.appendChild($el("div.bk", { onclick: () => m.remove() }));
       m.appendChild(pn);
@@ -746,6 +760,8 @@ app.registerExtension({
           auto_download: fAutoDl.checked,
           archive_existing: fExisting.checked,
           download_mode: fMode.value,
+          download_include_metadata: fMeta.checked,
+          download_keep_folders: fKeepFolders.checked,
           thumb_width: Number(fThumb.value),
           interval_sec: Number(fInterval.value),
         };
@@ -836,7 +852,7 @@ app.registerExtension({
       let offset = 0;
       const dt = dosDateNow(), tm = dosTimeNow();
       for (const e of entries) {
-        const nameB = enc.encode(e.path);
+        const nameB = enc.encode(e.subdir ? e.subdir + "/" + e.path : e.path);
         const data = e.bytes;
         const crc = crc32(data);
         const lh = new Uint8Array(30 + nameB.length);
@@ -977,43 +993,56 @@ app.registerExtension({
       throw lastErr || new Error("fetch failed");
     }
     const RUN_FILE_CANDIDATES = ["workflow.json", "info.json", "prompt.txt", "thumb.jpg"];
+    const MEDIA_EXT_RE = /\.(png|jpe?g|webp|gif|bmp|tiff?|avif|jxl|apng|ico|mp4|webm|mov|m4v|mkv|avi)$/i;
+    const isMediaName = (fn) => MEDIA_EXT_RE.test(String(fn || ""));
     async function gatherEntries(list) {
+      const cfg = (curConfig && curConfig.config) || {};
+      // 默认：只下图片/视频本体、全部平铺（不带 json/txt/缩略图，不建每张图的文件夹）。
+      // 两个开关分别对应「下载包含 json/txt 与缩略图」「下载保留每张图的文件夹」。
+      const includeMeta = cfg.download_include_metadata === true;
+      const keepFolders = cfg.download_keep_folders === true;
       const entries = [];
       const used = new Set();
       const failed = [];
       const push = (base, bytes, subdir) => {
         if (!bytes || !bytes.length) return;
         let nm = base, dup = 1;
-        while (used.has(nm)) { nm = base.replace(/(\.\w+)?$/, "_" + (dup++) + "$1"); }
-        used.add(nm);
+        const keyOf = (n) => (subdir ? subdir + "/" : "") + n;
+        while (used.has(keyOf(nm))) { nm = base.replace(/(\.\w+)?$/, "_" + (dup++) + "$1"); }
+        used.add(keyOf(nm));
         entries.push({ path: nm, bytes: bytes, subdir: subdir || "" });
       };
       for (const r of list) {
         const runBase = safeName(r.name);
-        // 后端若下发 r.files 就以其为准；否则按已知约定逐个尝试（缺失的 404 自动跳过）
+        const subdir = keepFolders ? runBase : "";
+        // 后端若下发 r.files 就以其为准；默认只保留媒体文件，开启开关后才带 json/txt/缩略图
         const names = (Array.isArray(r.files) && r.files.length)
-          ? r.files.slice()
-          : [r.media].concat(RUN_FILE_CANDIDATES).filter(Boolean);
+          ? (includeMeta ? r.files.slice() : r.files.filter((fn) => isMediaName(fn)))
+          : (includeMeta ? [r.media].concat(RUN_FILE_CANDIDATES).filter(Boolean) : [r.media].filter(Boolean));
         for (const fn of names) {
           if (!fn) continue;
           const rel = r.dir + "/" + fn;
           try {
-            push(runBase + "_" + baseName(fn), await fetchAssetBytes(rel), runBase);
+            const fileName = keepFolders ? baseName(fn) : runBase + "_" + baseName(fn);
+            push(fileName, await fetchAssetBytes(rel), subdir);
           } catch (e) {
             failed.push(rel + "  （" + (e && e.message ? e.message : e) + "）");
           }
         }
-        try {
-          const info = [
-            "Name: " + r.name,
-            "Time: " + (r.time || ""),
-            (r.positive ? "\nPrompt:\n" + r.positive : ""),
-            (r.negative ? "\nNegative:\n" + r.negative : ""),
-            (r.models && r.models.length ? "\nModels: " + r.models.join(", ") : ""),
-            (r.params ? "\nParams: " + Object.keys(r.params).map(k => k + "=" + r.params[k]).join(" · ") : ""),
-          ].filter(Boolean).join("\n");
-          push(runBase + "_info.txt", new TextEncoder().encode(info));
-        } catch (e) {}
+        if (includeMeta) {
+          try {
+            const info = [
+              "Name: " + r.name,
+              "Time: " + (r.time || ""),
+              (r.positive ? "\nPrompt:\n" + r.positive : ""),
+              (r.negative ? "\nNegative:\n" + r.negative : ""),
+              (r.models && r.models.length ? "\nModels: " + r.models.join(", ") : ""),
+              (r.params ? "\nParams: " + Object.keys(r.params).map(k => k + "=" + r.params[k]).join(" · ") : ""),
+            ].filter(Boolean).join("\n");
+            const infoName = runBase + "_info.txt";
+            push(infoName, new TextEncoder().encode(info), subdir);
+          } catch (e) {}
+        }
       }
       return { entries, failed };
     }
@@ -1086,13 +1115,22 @@ app.registerExtension({
       const list = filtered(runs);
       if (!list.length) { statusMsg(t("没有匹配的产物")); return; }
       const zipMode = !!(curConfig && curConfig.config && curConfig.config.download_mode === "zip");
+      const dlCfg = (curConfig && curConfig.config) || {};
+      const includeMeta = dlCfg.download_include_metadata === true;
+      const keepFolders = dlCfg.download_keep_folders === true;
+      const what = includeMeta
+        ? t("• 当前列表中的图片/视频 + json/txt 元数据与缩略图")
+        : t("• 当前列表中的图片/视频（不含 json/txt/缩略图）");
+      const layout = (keepFolders ? t("，每张图一个文件夹") : t("，全部平铺在同一目录")) + (zipMode ? t("，打包为单个 ZIP") : t("，逐个原样保存"));
       const m = $el("div.asm-modal");
       m.style.display = "flex";
       const pn = $el("div.pn", {}, [
         $el("button.x", { textContent: "✕", onclick: () => m.remove() }),
         bindText($el("h2", { style: { margin: "0 0 12px", fontSize: "15px" } }), "⬇ 下载确认"),
         bindText($el("div", { style: { fontSize: "13px", marginBottom: "6px" } }), zipMode ? "将打包下载以下内容:" : "将逐个保存以下文件:"),
-        bindText($el("div", { style: { fontSize: "13px", color: "var(--descrip-text,#aaa)", marginBottom: "12px", lineHeight: "1.8" } }), zipMode ? "• 当前列表中的全部资产（图片/视频/元数据/工作流）, 打包为单个 ZIP" : "• 当前列表中的全部资产（图片/视频/元数据/工作流）, 逐个原样保存", "innerHTML"),
+        $el("div", { style: { fontSize: "13px", color: "var(--descrip-text,#aaa)", marginBottom: "12px", lineHeight: "1.8" } }, [
+          document.createTextNode(what + layout),
+        ]),
         bindText($el("div", { style: { fontSize: "13px", marginBottom: "14px", wordBreak: "break-all" } }), t("下载数量: ") + list.length),
         $el("div.btns", {}, [
           bindText($el("button.asm-btn.primary", { onclick: () => { m.remove(); downloadRuns(list); } }), "确定下载"),

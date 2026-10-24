@@ -4,6 +4,8 @@
   "backup_dir": "",
   "auto_archive": true,
   "archive_existing": false,
+  "download_include_metadata": false,
+  "download_keep_folders": false,
   "thumb_width": 480,
   "interval_sec": 10,
   "ffprobe": "",
