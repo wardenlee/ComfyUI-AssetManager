@@ -993,8 +993,6 @@ app.registerExtension({
       throw lastErr || new Error("fetch failed");
     }
     const RUN_FILE_CANDIDATES = ["workflow.json", "info.json", "prompt.txt", "thumb.jpg"];
-    const MEDIA_EXT_RE = /\.(png|jpe?g|webp|gif|bmp|tiff?|avif|jxl|apng|ico|mp4|webm|mov|m4v|mkv|avi)$/i;
-    const isMediaName = (fn) => MEDIA_EXT_RE.test(String(fn || ""));
     async function gatherEntries(list) {
       const cfg = (curConfig && curConfig.config) || {};
       // 默认：只下图片/视频本体、全部平铺（不带 json/txt/缩略图，不建每张图的文件夹）。
@@ -1015,10 +1013,11 @@ app.registerExtension({
       for (const r of list) {
         const runBase = safeName(r.name);
         const subdir = keepFolders ? runBase : "";
-        // 后端若下发 r.files 就以其为准；默认只保留媒体文件，开启开关后才带 json/txt/缩略图
-        const names = (Array.isArray(r.files) && r.files.length)
-          ? (includeMeta ? r.files.slice() : r.files.filter((fn) => isMediaName(fn)))
-          : (includeMeta ? [r.media].concat(RUN_FILE_CANDIDATES).filter(Boolean) : [r.media].filter(Boolean));
+        // 默认只下这一条产物的主图/主视频本体（r.media）；后端 r.files 里还有 thumb.jpg 等，默认一律不取。
+        // 只有开启「下载包含 json/txt 与缩略图」后才按 r.files（或已知候选名）全量抓取。
+        const names = includeMeta
+          ? ((Array.isArray(r.files) && r.files.length) ? r.files.slice() : [r.media].concat(RUN_FILE_CANDIDATES).filter(Boolean))
+          : [r.media].filter(Boolean);
         for (const fn of names) {
           if (!fn) continue;
           const rel = r.dir + "/" + fn;
