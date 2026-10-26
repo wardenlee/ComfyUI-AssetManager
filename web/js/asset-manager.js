@@ -137,9 +137,9 @@ app.registerExtension({
       "下一张 (→)": "Next (→)",
       "多选模式: 点击切换选中, Shift+点击连选一段": "Multi-select: click to toggle, Shift+click to select a range",
       "已退出多选": "Exited multi-select",
-      "下载包含 json/txt 与缩略图": "Include json/txt and thumbnails in downloads",
+      "下载包含 json/txt 元数据": "Include json/txt metadata in downloads",
       "下载保留每张图的文件夹": "Keep one folder per asset in downloads",
-      "• 当前列表中的图片/视频 + json/txt 元数据与缩略图": "• images/videos in the current list + json/txt metadata and thumbnails",
+      "• 当前列表中的图片/视频 + json/txt 元数据": "• images/videos in the current list + json/txt metadata",
       "• 当前列表中的图片/视频（不含 json/txt/缩略图）": "• images/videos in the current list (no json/txt/thumbnails)",
       "，每张图一个文件夹": ", one folder per asset",
       "，全部平铺在同一目录": ", everything flattened into one folder",
@@ -734,7 +734,7 @@ app.registerExtension({
             bindText($el("label"), "下载方式"),
             fMode,
           ]),
-          $el("div.chk", {}, [fMeta, bindText($el("span"), "下载包含 json/txt 与缩略图")]),
+          $el("div.chk", {}, [fMeta, bindText($el("span"), "下载包含 json/txt 元数据")]),
           $el("div.chk", {}, [fKeepFolders, bindText($el("span"), "下载保留每张图的文件夹")]),
           $el("div.chk", {}, [fAuto, bindText($el("span"), "自动归档新产物")]),
           $el("div.chk", {}, [fAutoDl, bindText($el("span"), "自动下载新产物")]),
@@ -745,7 +745,7 @@ app.registerExtension({
         $el("div.btns", {}, [
           bindText($el("button.asm-btn.primary", { onclick: saveSettings }), "保存设置"),
         ]),
-        bindText($el("div", { style: { fontSize: "11px", color: "var(--descrip-text,#aaa)", marginTop: "10px" } }), "下载默认只保存图片/视频本体并全部平铺（不下载 json/txt/缩略图, 不建每张图的文件夹）; 需要元数据或文件夹时勾选上面的两个开关。改归档/下载目录后新产物进入新目录, 旧数据保留; 输出目录切换重启 ComfyUI 后仍生效; 自动归档/自动下载开关和扫描间隔即时生效。下载目录: 点「浏览…」可在系统对话框选择本地目录（授权后下载/自动下载直接写入该目录, 无需经过浏览器下载; 未授权时使用浏览器默认下载目录）。"),
+        bindText($el("div", { style: { fontSize: "11px", color: "var(--descrip-text,#aaa)", marginTop: "10px" } }), "下载默认只保存图片/视频本体并全部平铺（缩略图始终不下载, 不建每张图的文件夹）; 需要元数据或文件夹时勾选上面的两个开关。改归档/下载目录后新产物进入新目录, 旧数据保留; 输出目录切换重启 ComfyUI 后仍生效; 自动归档/自动下载开关和扫描间隔即时生效。下载目录: 点「浏览…」可在系统对话框选择本地目录（授权后下载/自动下载直接写入该目录, 无需经过浏览器下载; 未授权时使用浏览器默认下载目录）。"),
       ]);
       m.appendChild($el("div.bk", { onclick: () => m.remove() }));
       m.appendChild(pn);
@@ -992,11 +992,18 @@ app.registerExtension({
       }
       throw lastErr || new Error("fetch failed");
     }
-    const RUN_FILE_CANDIDATES = ["workflow.json", "info.json", "prompt.txt", "thumb.jpg"];
+    const RUN_FILE_CANDIDATES = ["workflow.json", "info.json", "prompt.txt"];
+    const THUMB_NAME_RE = /^thumb\.(jpe?g|png|webp|gif|bmp)$/i;
+    // 缩略图永远不下载（无论开关），主图之外的同名缩略图按 r.thumb / thumb.* 识别
+    function isThumbName(fn, run) {
+      const base = baseName(fn).toLowerCase();
+      const runThumb = String((run && run.thumb) || "").toLowerCase();
+      return THUMB_NAME_RE.test(base) || (!!runThumb && base === runThumb);
+    }
     async function gatherEntries(list) {
       const cfg = (curConfig && curConfig.config) || {};
-      // 默认：只下图片/视频本体、全部平铺（不带 json/txt/缩略图，不建每张图的文件夹）。
-      // 两个开关分别对应「下载包含 json/txt 与缩略图」「下载保留每张图的文件夹」。
+      // 默认：只下图片/视频本体、全部平铺（不带 json/txt，缩略图永不下载，不建每张图的文件夹）。
+      // 两个开关分别对应「下载包含 json/txt 元数据」「下载保留每张图的文件夹」。
       const includeMeta = cfg.download_include_metadata === true;
       const keepFolders = cfg.download_keep_folders === true;
       const entries = [];
@@ -1013,10 +1020,12 @@ app.registerExtension({
       for (const r of list) {
         const runBase = safeName(r.name);
         const subdir = keepFolders ? runBase : "";
-        // 默认只下这一条产物的主图/主视频本体（r.media）；后端 r.files 里还有 thumb.jpg 等，默认一律不取。
-        // 只有开启「下载包含 json/txt 与缩略图」后才按 r.files（或已知候选名）全量抓取。
+        // 默认只下这一条产物的主图/主视频本体（r.media）。
+        // 开启「下载包含 json/txt 元数据」后按 r.files（或已知候选名）抓取，但缩略图始终排除。
         const names = includeMeta
-          ? ((Array.isArray(r.files) && r.files.length) ? r.files.slice() : [r.media].concat(RUN_FILE_CANDIDATES).filter(Boolean))
+          ? ((Array.isArray(r.files) && r.files.length)
+              ? r.files.filter((fn) => !isThumbName(fn, r))
+              : [r.media].concat(RUN_FILE_CANDIDATES).filter(Boolean))
           : [r.media].filter(Boolean);
         for (const fn of names) {
           if (!fn) continue;
@@ -1118,7 +1127,7 @@ app.registerExtension({
       const includeMeta = dlCfg.download_include_metadata === true;
       const keepFolders = dlCfg.download_keep_folders === true;
       const what = includeMeta
-        ? t("• 当前列表中的图片/视频 + json/txt 元数据与缩略图")
+        ? t("• 当前列表中的图片/视频 + json/txt 元数据")
         : t("• 当前列表中的图片/视频（不含 json/txt/缩略图）");
       const layout = (keepFolders ? t("，每张图一个文件夹") : t("，全部平铺在同一目录")) + (zipMode ? t("，打包为单个 ZIP") : t("，逐个原样保存"));
       const m = $el("div.asm-modal");
