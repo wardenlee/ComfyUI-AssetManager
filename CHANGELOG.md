@@ -5,6 +5,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 > 本文件记录 **ComfyUI-AssetManager** 的所有重要改动，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.2.1] - 2026-11-03
+
+### Changed · 改动
+
+- **Folder view layout reworked · 文件夹视图布局重排** — folder actions moved to the **top of the left panel** as one compact button row, and the right panel is now a **pure image grid with no button bar**, so nothing eats into the viewing area. The left panel holds a clickable breadcrumb plus the **whole folder tree** of the output directory (indented, with a file count per folder).<br>
+  **文件夹视图布局重排** —— 文件夹相关按钮全部移到**左栏顶部**的紧凑按钮行，右栏变成**纯图片网格**（去掉按钮条），不再挤占看图区域。左栏是可点面包屑 + 输出目录的**整棵文件夹树**（按层级缩进，带每个文件夹的文件数）。
+- **Keyboard navigation · 键盘导航** — click any folder in the tree, or walk it with `↑` / `↓`, and the right panel switches to that folder's images immediately. The clickable breadcrumb replaces the old "up" button, so jumping to any parent takes one click. The keys are strictly scoped (panel open + folder view + no preview open + focus not in a text field), so ComfyUI's canvas shortcuts are unaffected.<br>
+  **键盘导航** —— 点树中任一文件夹，或用 `↑` / `↓` 走树，右侧立刻切到该文件夹的图片。可点面包屑取代原来的「上级」按钮，回任一层只要一次点击。按键有严格作用域（面板已打开 + 文件夹视图 + 未开预览 + 焦点不在输入框），不影响 ComfyUI 画布自身的快捷键。
+- **Space savings · 省空间** — the search box is now a fixed, narrower width, and the buttons added in 1.2.0 (`文件夹` / `新建` / `改名` / `删除` / `多选` / `剪切` / `粘贴` / `刷新`) carry **no icons**.<br>
+  **省空间** —— 搜索框改为固定窄宽度；1.2.0 新增的按钮（`文件夹` / `新建` / `改名` / `删除` / `多选` / `剪切` / `粘贴` / `刷新`）全部**不带图标**。
+- `改名` / `删除` now act on the **current folder** (previously on a separately selected sub-folder), and `新建` creates inside the current folder. The search box and the image/video filter now also apply to the folder view's image grid.<br>
+  `改名` / `删除` 改为作用于**当前文件夹**（此前作用于单独选中的子文件夹），`新建` 建在当前文件夹内；搜索框与图片/视频筛选在文件夹视图里也开始生效。
+- New route `GET /asset/folder_tree` returns the whole folder tree in a single request (the folder view no longer needs one request per folder).<br>
+  新增路由 `GET /asset/folder_tree`，一次请求返回整棵文件夹树（文件夹视图不再需要每个文件夹发一次请求）。
+
 ## [1.2.0] - 2026-11-03
 
 ### Added · 新增
@@ -51,4 +66,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Preview navigation with `←` / `→` inside the large-image dialog.<br>
   大图预览内用 `←` / `→` 翻页。
 
-[1.2.0]: https://github.com/wardenlee/ComfyUI-AssetManager/compare/74dcc0a...HEAD
+[1.2.1]: https://github.com/wardenlee/ComfyUI-AssetManager/compare/29a9c05...HEAD
+[1.2.0]: https://github.com/wardenlee/ComfyUI-AssetManager/compare/74dcc0a...29a9c05

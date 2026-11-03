@@ -893,6 +893,86 @@ def list_output(output_dir, rel="", archive_dir=None, open_state=None):
             "dirs": dirs, "files": files}
 
 
+def folder_tree(output_dir, open_state=None, max_depth=8, max_nodes=2000):
+    """output 目录的完整文件夹树(只含目录), 供左栏一次拉全(v1.2.1 §2.6)
+
+    - 一趟递归: 每个目录只 os.scandir 一次, 自底向上累计递归 file_count(无 O(n^2))
+    - 跳过以 "." 开头的目录; 超 max_depth / max_nodes -> truncated=True 并停止深入(不报错)
+    """
+    root = _output_root(output_dir)
+    if root is None or not root.is_dir():
+        return {"ok": False, "error": "Directory not found"}
+    if not isinstance(open_state, dict):
+        open_state = {}
+    try:
+        max_depth = int(max_depth)
+    except Exception:
+        max_depth = 8
+    try:
+        max_nodes = int(max_nodes)
+    except Exception:
+        max_nodes = 2000
+    if max_depth < 1:
+        max_depth = 1
+    if max_nodes < 1:
+        max_nodes = 1
+
+    stat_truncated = [False]
+    stat_count = [0]
+
+    def walk(path, rel, depth):
+        """返回 (本层子目录节点列表, 本目录递归文件数)"""
+        nodes = []
+        file_count = 0
+        try:
+            with os.scandir(path) as it:
+                entries = list(it)
+        except OSError:
+            return nodes, 0
+        dir_entries = []
+        for e in entries:
+            name = e.name
+            if name.startswith("."):
+                continue
+            try:
+                if e.is_dir(follow_symlinks=False):
+                    dir_entries.append(e)
+                elif e.is_file(follow_symlinks=False):
+                    file_count += 1
+            except OSError:
+                continue
+        for e in dir_entries:
+            if depth > max_depth or stat_count[0] >= max_nodes:
+                stat_truncated[0] = True
+                continue
+            child_rel = e.name if not rel else rel + "/" + e.name
+            created, mtime = "", ""
+            try:
+                st = e.stat(follow_symlinks=False)
+                created = _iso_ts(st.st_ctime)
+                mtime = _iso_ts(st.st_mtime)
+            except OSError:
+                pass
+            children, sub_files = walk(e.path, child_rel, depth + 1)
+            stat_count[0] += 1
+            file_count += sub_files
+            nodes.append({
+                "rel": child_rel,
+                "name": e.name,
+                "depth": depth,
+                "created": created,
+                "mtime": mtime,
+                "opened": open_state.get(open_key_out(child_rel)) or "",
+                "file_count": sub_files,
+                "children": children,
+            })
+        return nodes, file_count
+
+    nodes, _root_files = walk(root, "", 1)
+    return {"ok": True, "abs": str(root), "truncated": stat_truncated[0],
+            "node_count": stat_count[0], "nodes": nodes}
+
+
 def mkdir_output(output_dir, rel_parent="", name=""):
     root = _output_root(output_dir)
     if root is None:

@@ -10,7 +10,7 @@ const STYLE = `
 .asm-header .sp { flex:1; }
 .asm-x { background:none; border:none; color:var(--fg-color,#eee); font-size:20px; cursor:pointer; }
 .asm-toolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:10px 14px; border-bottom:1px solid var(--border-color,#444); }
-.asm-search { flex:1; min-width:180px; background:var(--comfy-input-bg,#333); border:1px solid var(--border-color,#444); color:var(--input-text,#eee); border-radius:6px; padding:6px 10px; font-size:13px; }
+.asm-search { flex:0 0 170px; background:var(--comfy-input-bg,#333); border:1px solid var(--border-color,#444); color:var(--input-text,#eee); border-radius:6px; padding:6px 10px; font-size:13px; }
 .asm-btn { background:var(--comfy-input-bg,#333); border:1px solid var(--border-color,#444); color:var(--fg-color,#eee); border-radius:6px; padding:6px 12px; cursor:pointer; font-size:13px; }
 .asm-btn.on { border-color:var(--comfy-menu-bg, #5b8cff); color:#5b8cff; }
 .asm-btn.primary { background:#2368b0; border-color:#2368b0; color:#fff; }
@@ -90,30 +90,20 @@ const STYLE = `
 .asm-sort { background:var(--comfy-input-bg,#333); border:1px solid var(--border-color,#444); color:var(--input-text,#eee); border-radius:6px; padding:6px 8px; font-size:13px; }
 .asm-lbl { font-size:12px; color:var(--descrip-text,#aaa); }
 .asm-folder { display:flex; align-items:flex-start; gap:14px; }
-.asm-fside { width:220px; flex:0 0 220px; display:flex; flex-direction:column; max-height:68vh; padding-right:10px; border-right:1px solid var(--border-color,#3a3a3a); box-sizing:border-box; }
-.asm-crumbs { display:flex; flex-wrap:wrap; align-items:center; font-size:12px; color:var(--descrip-text,#aaa); margin-bottom:6px; word-break:break-all; line-height:1.7; }
+.asm-fside { flex:0 0 252px; width:252px; max-height:68vh; overflow:auto; box-sizing:border-box; padding-right:10px; border-right:1px solid var(--border-color,#3a3a3a); }
+.asm-fbtns { display:flex; flex-wrap:wrap; gap:6px; }
+.asm-fbtns .asm-btn { padding:4px 8px; font-size:12px; }
+.asm-crumbs { display:flex; flex-wrap:wrap; align-items:center; font-size:12px; color:var(--descrip-text,#aaa); margin:8px 0 6px; word-break:break-all; line-height:1.7; }
 .asm-crumb { cursor:pointer; color:#5b8cff; }
 .asm-crumb:hover { text-decoration:underline; }
 .asm-crumbsep { color:var(--descrip-text,#888); }
-.asm-flist { flex:1 1 auto; min-height:60px; overflow:auto; margin:8px 0; border-top:1px solid var(--border-color,#3a3a3a); border-bottom:1px solid var(--border-color,#3a3a3a); }
-.asm-fitem { display:flex; align-items:center; gap:6px; padding:6px 8px; font-size:12px; cursor:pointer; border-radius:6px; }
-.asm-fitem:hover { background:rgba(91,140,255,.15); }
-.asm-fitem .fi { flex:0 0 auto; }
-.asm-fitem .fn { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.asm-fitem .fc { flex:0 0 auto; color:var(--descrip-text,#888); font-size:11px; }
-.asm-fempty { color:var(--descrip-text,#888); font-size:12px; padding:10px 8px; }
-.asm-fbtns { display:flex; flex-wrap:wrap; gap:6px; }
-.asm-fbtns .asm-btn { padding:5px 8px; font-size:12px; }
+.asm-tree { border-top:1px solid var(--border-color,#3a3a3a); padding-top:4px; }
+.asm-trow { padding:5px 8px; font-size:12px; cursor:pointer; border-radius:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--descrip-text,#bbb); }
+.asm-trow:hover { background:rgba(91,140,255,.15); color:var(--fg-color,#eee); }
+.asm-trow.cur { background:rgba(91,140,255,.22); color:#5b8cff; font-weight:600; }
+.asm-fempty { color:var(--descrip-text,#888); font-size:12px; padding:10px 8px; white-space:normal; }
 .asm-fmain { flex:1; min-width:0; }
-.asm-fbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding-bottom:10px; }
 .asm-fgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:12px; }
-.asm-tile { position:relative; background:var(--comfy-input-bg,#2a2a2a); border:1px solid var(--border-color,#444); border-radius:8px; padding:14px 10px; cursor:pointer; text-align:center; }
-.asm-tile:hover { border-color:#5b8cff; }
-.asm-tile.selected { border-color:#5b8cff; box-shadow:0 0 0 2px rgba(91,140,255,.45); }
-.asm-tile .ti { font-size:34px; line-height:1.1; }
-.asm-tile .tn { font-size:12px; color:var(--fg-color,#eee); margin-top:6px; word-break:break-all; }
-.asm-tile .tm { font-size:11px; color:var(--descrip-text,#999); margin-top:3px; }
-.asm-tile .selmark, .asm-fcard .selmark { position:absolute; top:6px; right:6px; width:22px; height:22px; border-radius:50%; background:#5b8cff; color:#fff; font-size:13px; display:flex; align-items:center; justify-content:center; z-index:2; }
 .asm-fcard .pico { display:flex; align-items:center; justify-content:center; height:100%; font-size:34px; color:var(--descrip-text,#999); }
 .asm-fcard .m video { width:100%; height:100%; object-fit:cover; display:block; }
 .asm-fgrid .asm-empty { grid-column:1 / -1; }
@@ -231,7 +221,7 @@ app.registerExtension({
       "共 ": "Total: ",
       " 条资产": " assets",
       "已自动更新: 共 ": "Auto-updated: ",
-      "📁 文件夹": "📁 Folders",
+      "文件夹": "Folders",
       "排序": "Sort",
       "新建时间↓": "Created ↓",
       "新建时间↑": "Created ↑",
@@ -239,23 +229,25 @@ app.registerExtension({
       "打开时间↑": "Opened ↑",
       "名称 A→Z": "Name A→Z",
       "名称 Z→A": "Name Z→A",
-      "⬆ 上级": "⬆ Up",
       "output 根": "output root",
-      "🗂 新建文件夹": "🗂 New folder",
-      "✎ 改名": "✎ Rename",
-      "🗑 删除文件夹": "🗑 Delete folder",
-      "✂ 剪切": "✂ Cut",
-      "📋 粘贴": "📋 Paste",
-      "⟳ 刷新": "⟳ Refresh",
-      "（此文件夹为空）": "(this folder is empty)",
-      "（请先选中一个文件夹）": "(select a sub-folder first)",
+      "新建": "New",
+      "改名": "Rename",
+      "删除": "Delete",
+      "多选": "Multi-select",
+      "剪切": "Cut",
+      "粘贴": "Paste",
+      "刷新": "Refresh",
+      "此文件夹没有图片": "No images in this folder",
+      "没有匹配当前筛选的图片": "No images match the current filter",
       "（请先选中要移动的项）": "(select the items to move first)",
       "剪贴板为空": "Clipboard is empty",
-      "已在 output 根目录": "Already at the output root",
+      "（根目录不能改名）": "(the output root cannot be renamed)",
+      "（根目录不能删除）": "(the output root cannot be deleted)",
       "新建文件夹": "New folder",
-      "文件夹名:": "Folder name:",
       "新名称:": "New name:",
       "文件夹加载失败: ": "Failed to load folder: ",
+      "文件夹树加载失败: ": "Failed to load folder tree: ",
+      "（文件夹过多，仅显示部分）": "(too many folders — list truncated)",
       "新建失败: ": "Create failed: ",
       "改名失败: ": "Rename failed: ",
       "移动失败: ": "Move failed: ",
@@ -358,7 +350,10 @@ app.registerExtension({
     let folderPath = "";                                        // 当前文件夹 rel
     let folderData = { path: "", parent: null, dirs: [], files: [] };
     let clipboard = null;                                       // { items: [rel, ...] } 剪切语义
-    let folderOrder = [];                                       // 当前文件夹视图的显示顺序(Shift 连选用)
+    let folderTree = { nodes: [], truncated: false };            // GET /asset/folder_tree 的全量树
+    let flatTree = [];                                          // 已排序 + 已扁平化的树列表(↑/↓ 用)
+    let treeRowEls = {};                                        // rel -> 树行元素
+    let treeCurEl = null;                                       // 当前高亮的树行
 
     const byDate = {};
     function rebuildByDate() {
@@ -477,31 +472,27 @@ app.registerExtension({
       renderCal();
     }
 
-    // ---------- 文件夹视图骨架 ----------
+    // ---------- 文件夹视图骨架(左栏: 按钮区 → 面包屑 → 文件夹树; 右栏: 纯图片网格) ----------
     const fCrumbs = $el("div.asm-crumbs");
-    const fUpBtn = bindText($el("button.asm-btn", { onclick: () => goParent() }), "⬆ 上级");
-    const fDirList = $el("div.asm-flist");
-    const fNewBtn = bindText($el("button.asm-btn", { onclick: () => newFolder() }), "🗂 新建文件夹");
-    const fRenBtn = bindText($el("button.asm-btn", { onclick: () => renameFolder() }), "✎ 改名");
-    const fDelBtn = bindText($el("button.asm-btn.danger", { onclick: () => deleteFolder() }), "🗑 删除文件夹");
+    const fTreeEl = $el("div.asm-tree");
+    // 新增按钮一律无图标(契约 §6.3); 顺序: 新建 改名 删除 多选 剪切 粘贴 刷新
+    const fNewBtn = bindText($el("button.asm-btn", { onclick: () => newFolder() }), "新建");
+    const fRenBtn = bindText($el("button.asm-btn", { onclick: () => renameFolder() }), "改名");
+    const fDelBtn = bindText($el("button.asm-btn.danger", { onclick: () => deleteFolder() }), "删除");
+    // 「多选」复用现有 multi/selected 状态, 与工具栏的「☑ 多选」同步高亮
+    const fMultiBtn = bindText($el("button.asm-btn", { onclick: () => toggleMulti() }), "多选");
+    const fCutBtn = bindText($el("button.asm-btn", { onclick: () => cutSelected() }), "剪切");
+    const fPasteBtn = bindText($el("button.asm-btn", { onclick: () => pasteClipboard() }), "粘贴");
+    const fRefreshBtn = bindText($el("button.asm-btn", { onclick: () => reloadFolderView() }), "刷新");
     const fSide = $el("div.asm-fside", {}, [
+      $el("div.asm-fbtns", {}, [fNewBtn, fRenBtn, fDelBtn, fMultiBtn, fCutBtn, fPasteBtn, fRefreshBtn]),
       fCrumbs,
-      fUpBtn,
-      fDirList,
-      $el("div.asm-fbtns", {}, [fNewBtn, fRenBtn, fDelBtn]),
+      fTreeEl,
     ]);
-    const fCutBtn = bindText($el("button.asm-btn", { onclick: () => cutSelected() }), "✂ 剪切");
-    const fPasteBtn = bindText($el("button.asm-btn", { onclick: () => pasteClipboard() }), "📋 粘贴");
-    // 「☑ 多选」复用现有 multi/selected 状态, 与工具栏按钮同步高亮
-    const fMultiBtn = bindText($el("button.asm-btn", { onclick: () => toggleMulti() }), "☑ 多选");
-    const fRefreshBtn = bindText($el("button.asm-btn", { onclick: () => loadFolder(folderPath) }), "⟳ 刷新");
     const fGrid = $el("div.asm-fgrid");
     const folderWrap = $el("div.asm-folder", { style: { display: "none" } }, [
       fSide,
-      $el("div.asm-fmain", {}, [
-        $el("div.asm-fbar", {}, [fCutBtn, fPasteBtn, fMultiBtn, fRefreshBtn]),
-        fGrid,
-      ]),
+      $el("div.asm-fmain", {}, [fGrid]),
     ]);
     function setMultiBtns() {
       [multiBtn, fMultiBtn].forEach((b) => { if (b) b.classList.toggle("on", multi); });
@@ -520,7 +511,7 @@ app.registerExtension({
         // 文件夹视图的选中集合存 rel, 网格/日历存 dir, 二者不通用 → 进出文件夹视图时清空选中
         if (prev === "folder" || v === "folder") { selected.clear(); selAnchor = null; }
         refresh();
-        if (v === "folder") loadFolder(folderPath);
+        if (v === "folder") { loadFolderTree(); loadFolder(folderPath); }
       };
       viewBtns[v] = b;
       return b;
@@ -561,13 +552,14 @@ app.registerExtension({
       sortMode = sortSel.value;
       try { localStorage.setItem("am_sort_mode", sortMode); } catch (e) {}
       refresh();
+      if (view === "folder") renderTree();   // 左栏树列表也按新 sortMode 重排
     };
     relabelers.push(fillSortSel);
     const toolbar = $el("div.asm-toolbar", {}, [
       q,
       mkViewBtn("网格", "grid"),
       mkViewBtn("日历", "cal"),
-      mkViewBtn("📁 文件夹", "folder"),
+      mkViewBtn("文件夹", "folder"),
       mkKindBtn("全部", "all"),
       mkKindBtn("图片", "image"),
       mkKindBtn("视频", "video"),
@@ -709,36 +701,100 @@ app.registerExtension({
       else for (const r of list) renderCard(r, calListCards, list);
     }
 
-    // ---------- 文件夹视图: 渲染 / 交互 ----------
+    // ---------- 文件夹视图: 树 / 渲染 / 交互 ----------
     function dirNameOf(rel) {
       const i = rel.lastIndexOf("/");
       return i >= 0 ? rel.slice(i + 1) : rel;
     }
+    function parentOf(rel) {
+      return rel.indexOf("/") >= 0 ? rel.slice(0, rel.lastIndexOf("/")) : "";
+    }
+    function buildFlatTree(nodes, out) {
+      const sorted = sortItems(nodes || [], sortMode, (n) => n.name, (n) => n.created, (n) => n.opened);
+      for (const n of sorted) {
+        out.push(n);
+        buildFlatTree(n.children || [], out);
+      }
+      return out;
+    }
+    function treeSig(flat) {
+      return flat.map((n) => n.rel + ":" + (n.file_count || 0)).join("|");
+    }
     function renderCrumbs() {
       fCrumbs.innerHTML = "";
-      fCrumbs.appendChild($el("span.asm-crumb", { textContent: t("output 根"), onclick: () => enterFolder("") }));
+      fCrumbs.appendChild($el("span.asm-crumb", { textContent: t("output 根"), onclick: () => goToFolder("") }));
       const parts = folderPath ? folderPath.split("/") : [];
       let acc = "";
       for (const p of parts) {
         acc = acc ? acc + "/" + p : p;
         const rel = acc;
         fCrumbs.appendChild($el("span.asm-crumbsep", { textContent: " / " }));
-        fCrumbs.appendChild($el("span.asm-crumb", { textContent: p, onclick: () => enterFolder(rel) }));
+        fCrumbs.appendChild($el("span.asm-crumb", { textContent: p, onclick: () => goToFolder(rel) }));
       }
     }
-    function renderFolderTile(d) {
-      const on = selected.has(d.rel);
-      const tile = $el("div.asm-tile" + (on ? ".selected" : ""));
-      tile.appendChild($el("div.ti", { textContent: "📁" }));
-      tile.appendChild($el("div.tn", { textContent: d.name }));
-      tile.appendChild($el("div.tm", { textContent: (d.file_count || 0) + (LANG === "zh" ? " 个文件" : " files") }));
-      if (on) tile.appendChild($el("div.selmark", { textContent: "✓" }));
-      tile.onclick = (ev) => {
-        const shift = !!(ev && ev.shiftKey);
-        if (!multi && !shift) { enterFolder(d.rel); return; }
-        pickInFolder(d.rel, ev);
-      };
-      fGrid.appendChild(tile);
+    // 左栏文件夹树: 按 sortMode 排序 + 扁平化, 每级缩进 12px, 当前项高亮, 行显示 名称 (文件数)
+    function renderTree() {
+      flatTree = buildFlatTree((folderTree && folderTree.nodes) || [], []);
+      fTreeEl.innerHTML = "";
+      treeRowEls = {};
+      treeCurEl = null;
+      if (!flatTree.length) {
+        fTreeEl.appendChild(bindText($el("div.asm-fempty"), "（无子目录）"));
+        return;
+      }
+      for (const n of flatTree) {
+        const row = $el("div.asm-trow");
+        row.style.paddingLeft = (4 + (n.depth || 1) * 12) + "px";
+        row.title = n.rel;
+        row.textContent = n.name + " (" + (n.file_count || 0) + ")";
+        row.onclick = () => goToFolder(n.rel);
+        treeRowEls[n.rel] = row;
+        fTreeEl.appendChild(row);
+      }
+      if (folderTree && folderTree.truncated) {
+        fTreeEl.appendChild(bindText($el("div.asm-fempty"), "（文件夹过多，仅显示部分）"));
+      }
+      updateTreeHighlight(false);
+    }
+    function updateTreeHighlight(scroll) {
+      if (treeCurEl) treeCurEl.classList.remove("cur");
+      treeCurEl = treeRowEls[folderPath] || null;
+      if (treeCurEl) {
+        treeCurEl.classList.add("cur");
+        if (scroll && treeCurEl.scrollIntoView) treeCurEl.scrollIntoView({ block: "nearest" });
+      }
+    }
+    // 点树行: 立刻切右侧(不重排树, 只挪高亮)
+    function goToFolder(rel, scroll) {
+      enterFolder(rel || "");
+      updateTreeHighlight(scroll !== false);
+    }
+    async function loadFolderTree() {
+      try {
+        const res = await fetch("./asset/folder_tree");
+        const d = await res.json();
+        if (!d.ok) { statusMsg(t("文件夹树加载失败: ") + (terr(d.error) || "")); return; }
+        folderTree = d;
+        renderTree();
+      } catch (e) {
+        statusMsg(t("文件夹树加载失败: ") + (e && e.message ? e.message : e));
+      }
+    }
+    async function reloadFolderView() {
+      await loadFolderTree();
+      await loadFolder(folderPath);
+    }
+    // ↑/↓: 在已排序已扁平化的树列表里移动高亮并立刻切右侧; 到顶/到底不回绕
+    function moveTreeSel(d) {
+      if (!flatTree.length) return;
+      let idx = flatTree.findIndex((n) => n.rel === folderPath);
+      if (idx < 0) {
+        if (d < 0) return;   // 当前在根(不在树列表里): ↑ 不动
+        idx = -1;            // ↓ 从第一行开始
+      }
+      const next = idx + d;
+      if (next < 0 || next >= flatTree.length) return;
+      goToFolder(flatTree[next].rel, true);
     }
     function renderFileCard(f) {
       const on = selected.has(f.rel);
@@ -767,43 +823,47 @@ app.registerExtension({
       };
       fGrid.appendChild(card);
     }
+    // 右栏文件: 复用搜索框 + 全部/图片/视频 筛选, 再按同一 sortMode 排
+    function filterFolderFiles() {
+      const kw = q.value.trim().toLowerCase();
+      let list = (folderData.files || []).filter((f) => kind === "all" || f.kind === kind);
+      if (kw) list = list.filter((f) => String(f.name || "").toLowerCase().indexOf(kw) >= 0);
+      return sortItems(list, sortMode, (f) => f.name, (f) => f.created, (f) => f.opened);
+    }
+    // 右栏 = 纯图片网格(无按钮条, 无文件夹磁贴)
     function renderFolder() {
       renderCrumbs();
-      const dirs = sortItems(folderData.dirs || [], sortMode, (d) => d.name, (d) => d.created, (d) => d.opened);
-      const files = sortItems(folderData.files || [], sortMode, (f) => f.name, (f) => f.created, (f) => f.opened);
-      folderOrder = dirs.map((d) => d.rel).concat(files.map((f) => f.rel));
-      // 左栏: 当前目录的直接子文件夹(点一下进入)
-      fDirList.innerHTML = "";
-      if (!dirs.length) fDirList.appendChild($el("div.asm-fempty", { textContent: t("（无子目录）") }));
-      for (const d of dirs) {
-        const it = $el("div.asm-fitem", {}, [
-          $el("span.fi", { textContent: "📁" }),
-          $el("span.fn", { textContent: d.name }),
-          $el("span.fc", { textContent: String(d.file_count || 0) }),
-        ]);
-        it.onclick = () => enterFolder(d.rel);
-        fDirList.appendChild(it);
-      }
-      // 右栏: 文件夹磁贴 + 文件卡片(各自按同一 sortMode 排)
+      const files = filterFolderFiles();
+      const total = (folderData.files || []).length;
       fGrid.innerHTML = "";
-      if (!dirs.length && !files.length) fGrid.appendChild($el("div.asm-empty", { textContent: t("（此文件夹为空）") }));
-      for (const d of dirs) renderFolderTile(d);
+      if (!files.length) {
+        let msg;
+        if (total) msg = t("没有匹配当前筛选的图片");
+        else {
+          const sub = (folderData.dirs || []).length;   // 当前目录的直接子文件夹数(list_output 同源)
+          msg = t("此文件夹没有图片");
+          if (sub > 0) msg += LANG === "zh" ? ("，共 " + sub + " 个子文件夹，点左侧进入") : (" — " + sub + " sub-folder(s), pick one on the left");
+        }
+        fGrid.appendChild($el("div.asm-empty", { textContent: msg }));
+        return;
+      }
       for (const f of files) renderFileCard(f);
-      updateFolderBar();
     }
     // 文件夹视图里的点选(多选): 复用 multi / selected(存 rel), 支持 Shift 连选
     function pickInFolder(rel, ev) {
       const shift = !!(ev && ev.shiftKey);
       if (shift && !multi) { multi = true; setMultiBtns(); statusMsg(t("多选模式: 点击切换选中, Shift+点击连选一段")); }
       if (!multi) return;
+      const order = filterFolderFiles().map((f) => f.rel);   // Shift 连选按「当前显示顺序」
       if (shift && selAnchor) {
-        const i0 = folderOrder.indexOf(selAnchor), i1 = folderOrder.indexOf(rel);
+        const i0 = order.indexOf(selAnchor), i1 = order.indexOf(rel);
         if (i0 >= 0 && i1 >= 0) {
           const a = Math.min(i0, i1), b = Math.max(i0, i1);
-          for (let i = a; i <= b; i++) selected.add(folderOrder[i]);
+          for (let i = a; i <= b; i++) selected.add(order[i]);
           selAnchor = rel;
           renderFolder();
           updateBatchBtn();
+          updateFolderBtns();
           return;
         }
       }
@@ -811,11 +871,13 @@ app.registerExtension({
       selAnchor = rel;
       renderFolder();
       updateBatchBtn();
+      updateFolderBtns();
     }
     function enterFolder(rel) {
       const next = rel || "";
       if (next !== folderPath) { selected.clear(); selAnchor = null; updateBatchBtn(); }
       folderPath = next;
+      renderCrumbs();   // 面包屑立刻跟随, 不等右侧 fetch
       loadFolder(next);
     }
     async function loadFolder(rel) {
@@ -829,24 +891,13 @@ app.registerExtension({
         folderPath = next;
         folderData = d;
         renderFolder();
+        updateTreeHighlight(false);
         updateBatchBtn();
+        updateFolderBtns();
         reportOpen("out:" + folderPath); // 进入文件夹(根 "" 也上报, key = "out:")
       } catch (e) {
         statusMsg(t("文件夹加载失败: ") + (e && e.message ? e.message : e));
       }
-    }
-    function goParent() {
-      if (!folderPath) { statusMsg(t("已在 output 根目录")); return; }
-      let up = "";
-      if (folderData && typeof folderData.parent === "string") up = folderData.parent;
-      else up = folderPath.indexOf("/") >= 0 ? folderPath.slice(0, folderPath.lastIndexOf("/")) : "";
-      enterFolder(up);
-    }
-    // 改名/删除作用于「当前选中的子文件夹」
-    function firstSelectedDir() {
-      const dirs = (folderData && folderData.dirs) || [];
-      for (const s of selected) { if (dirs.some((d) => d.rel === s)) return s; }
-      return null;
     }
     async function newFolder() {
       const nm = prompt(t("新建文件夹") + (folderPath ? (" — " + folderPath) : ""), "");
@@ -857,55 +908,56 @@ app.registerExtension({
         const d = await postJSON("./asset/mkdir_output", { path: folderPath, name: name });
         if (d.ok) {
           statusMsg(LANG === "zh" ? ("已新建文件夹: " + name) : ("Folder created: " + name));
-          await loadFolder(folderPath);
+          await reloadFolderView();
         } else statusMsg(t("新建失败: ") + (terr(d.error) || ""));
       } catch (e) { statusMsg(t("新建失败: ") + (e && e.message ? e.message : e)); }
     }
+    // 改名作用于「当前文件夹」(根目录提示并中止)
     async function renameFolder() {
-      const rel = firstSelectedDir();
-      if (!rel) { statusMsg(t("（请先选中一个文件夹）")); return; }
-      const oldName = dirNameOf(rel);
+      if (!folderPath) { statusMsg(t("（根目录不能改名）")); return; }
+      const oldName = dirNameOf(folderPath);
       const nm = prompt(t("新名称:"), oldName);
       if (nm === null) return;
       const name = String(nm).trim();
       if (!name) return;
       try {
-        const d = await postJSON("./asset/rename_output", { path: rel, name: name });
+        const d = await postJSON("./asset/rename_output", { path: folderPath, name: name });
         if (d.ok) {
-          selected.delete(rel);
+          folderPath = d.rel || folderPath;   // 用返回的新 rel 继续停留在这个文件夹
           statusMsg(LANG === "zh" ? ("已改名: " + oldName + " → " + name) : ("Renamed: " + oldName + " → " + name));
-          await loadFolder(folderPath);
+          await reloadFolderView();
         } else statusMsg(t("改名失败: ") + (terr(d.error) || ""));
       } catch (e) { statusMsg(t("改名失败: ") + (e && e.message ? e.message : e)); }
     }
+    // 删除作用于「当前文件夹」(根目录提示并中止); 成功后回到父目录
     async function deleteFolder() {
-      const rel = firstSelectedDir();
-      if (!rel) { statusMsg(t("（请先选中一个文件夹）")); return; }
-      const nm = dirNameOf(rel);
+      if (!folderPath) { statusMsg(t("（根目录不能删除）")); return; }
+      const nm = dirNameOf(folderPath);
+      const up = parentOf(folderPath);
       const ask = LANG === "zh" ? ("确定删除文件夹「" + nm + "」吗？") : ("Delete folder \"" + nm + "\"?");
       if (!confirm(ask)) return;
       try {
-        let d = await postJSON("./asset/delete_output_dir", { path: rel, recursive: false });
+        let d = await postJSON("./asset/delete_output_dir", { path: folderPath, recursive: false });
         if (!d.ok && d.error === "Folder is not empty") {
           const n = typeof d.files === "number" ? d.files : 0;
           const more = LANG === "zh" ? ("该文件夹里有 " + n + " 个文件, 连带一起删除？") : ("This folder contains " + n + " files. Delete them as well?");
           if (!confirm(more)) return;
-          d = await postJSON("./asset/delete_output_dir", { path: rel, recursive: true });
+          d = await postJSON("./asset/delete_output_dir", { path: folderPath, recursive: true });
         }
         if (d.ok) {
-          selected.delete(rel);
           statusMsg(LANG === "zh" ? ("已删除文件夹: " + nm) : ("Folder deleted: " + nm));
           await loadRuns();
-          await loadFolder(folderPath);
+          await loadFolderTree();
+          goToFolder(up);
         } else statusMsg(t("删除失败: ") + (terr(d.error) || ""));
       } catch (e) { statusMsg(t("删除失败: ") + (e && e.message ? e.message : e)); }
     }
     function cutSelected() {
       if (!selected.size) { statusMsg(t("（请先选中要移动的项）")); return; }
       clipboard = { items: [...selected] };
-      updateFolderBar();
+      updateFolderBtns();
       statusMsg(LANG === "zh"
-        ? ("已剪切 " + clipboard.items.length + " 项, 进入目标文件夹后点「📋 粘贴」")
+        ? ("已剪切 " + clipboard.items.length + " 项, 进入目标文件夹后点「粘贴」")
         : ("Cut " + clipboard.items.length + " item(s); open the target folder and click Paste"));
     }
     async function pasteClipboard() {
@@ -921,8 +973,9 @@ app.registerExtension({
         selected.clear();
         selAnchor = null;
         updateBatchBtn();
-        updateFolderBar();
+        updateFolderBtns();
         await loadRuns();
+        await loadFolderTree();
         await loadFolder(folderPath);
         const base = LANG === "zh" ? ("已移动 " + moved + " 项") : ("Moved " + moved + " item(s)");
         const extra = failed ? (LANG === "zh" ? ("（失败 " + failed + " 项）") : (" (" + failed + " failed)")) : "";
@@ -934,21 +987,39 @@ app.registerExtension({
       reportOpen("out:" + f.rel);
       openOutputPreview(f);
     }
-    function updateFolderBar() {
+    function updateFolderBtns() {
       const n = selected.size;
-      fCutBtn.textContent = t("✂ 剪切") + (n ? "(" + n + ")" : "");
+      fCutBtn.textContent = t("剪切") + (n ? "(" + n + ")" : "");
       fCutBtn.disabled = n === 0;
       const c = (clipboard && clipboard.items) ? clipboard.items.length : 0;
-      fPasteBtn.textContent = t("📋 粘贴") + (c ? "(" + c + ")" : "");
+      fPasteBtn.textContent = t("粘贴") + (c ? "(" + c + ")" : "");
       fPasteBtn.disabled = c === 0;
     }
+    // ↑/↓ 键盘导航: 作用域严格限定, 其余情况一律不拦截(不抢 ComfyUI 画布按键)
+    function onFolderKey(e) {
+      if (overlay.style.display !== "flex") return;
+      if (view !== "folder") return;
+      if (pv) return;                                   // 大图预览打开 → 交给预览的 ←/→/Esc
+      const el = e.target || {};
+      const tag = String(el.tagName || "").toUpperCase();
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable) return;
+      if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+      e.preventDefault();
+      e.stopPropagation();
+      moveTreeSel(e.key === "ArrowDown" ? 1 : -1);
+    }
+    document.addEventListener("keydown", onFolderKey, true);
 
     function refresh() {
       if (view === "grid") { gridEl.style.display = ""; calWrap.style.display = "none"; folderWrap.style.display = "none"; renderGrid(); }
       else if (view === "cal") { gridEl.style.display = "none"; calWrap.style.display = ""; folderWrap.style.display = "none"; renderCal(); }
-      else { gridEl.style.display = "none"; calWrap.style.display = "none"; folderWrap.style.display = ""; renderFolder(); }
+      else {
+        gridEl.style.display = "none"; calWrap.style.display = "none"; folderWrap.style.display = "";
+        renderFolder();
+        updateTreeHighlight(false);
+      }
       updateBatchBtn();
-      updateFolderBar();
+      updateFolderBtns();
     }
 
     // ---------- 多选 / 批量删除 ----------
@@ -1662,7 +1733,7 @@ app.registerExtension({
         calYear = Number(d.slice(0, 4)); calMonth = Number(d.slice(5, 7)) - 1; selDate = d;
       }
       refresh();
-      if (view === "folder") await loadFolder(folderPath);
+      if (view === "folder") { await loadFolderTree(); await loadFolder(folderPath); }
       statusMsg(t("共 ") + runs.length + t(" 条资产"));
       if (pollTimer) clearInterval(pollTimer);
       pollTimer = setInterval(pollRefresh, 8000);
@@ -1700,23 +1771,36 @@ app.registerExtension({
           }
         }
       } catch (e) {}
-      // 文件夹视图: 也要刷新当前目录(不打断进行中的多选, 只清掉已不存在的选中项)
-      if (overlay.style.display === "flex" && view === "folder") await pollFolder();
+      // 文件夹视图: 轻量刷新当前目录 + 文件夹树(不打断进行中的多选, 只清掉已不存在的选中项)
+      if (overlay.style.display === "flex" && view === "folder") { await pollFolder(); await pollFolderTree(); }
     }
     async function pollFolder() {
       try {
         const res = await fetch("./asset/list_output?path=" + encodeURIComponent(folderPath));
         const d = await res.json();
         if (!d.ok) return;
-        const nDir = (d.dirs || []).length, nFile = (d.files || []).length;
-        const oDir = (folderData.dirs || []).length, oFile = (folderData.files || []).length;
-        if ((d.path || "") !== folderPath || nDir !== oDir || nFile !== oFile) {
+        const nFile = (d.files || []).length;
+        const oFile = (folderData.files || []).length;
+        if ((d.path || "") !== folderPath || nFile !== oFile) {
           folderPath = d.path || folderPath;
           folderData = d;
-          const live = new Set((d.dirs || []).map(x => x.rel).concat((d.files || []).map(x => x.rel)));
+          // 选中集合只存右栏文件 rel → 已不存在的清掉
+          const live = new Set((d.files || []).map((x) => x.rel));
           for (const s of [...selected]) if (!live.has(s)) selected.delete(s);
           renderFolder();
           updateBatchBtn();
+          updateFolderBtns();
+        }
+      } catch (e) {}
+    }
+    async function pollFolderTree() {
+      try {
+        const res = await fetch("./asset/folder_tree");
+        const d = await res.json();
+        if (!d.ok) return;
+        if (treeSig(buildFlatTree(d.nodes || [], [])) !== treeSig(flatTree)) {
+          folderTree = d;
+          renderTree();
         }
       } catch (e) {}
     }

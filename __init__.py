@@ -20,7 +20,7 @@ WEB_DIRECTORY = "web"
 NODE_CLASS_MAPPINGS = {}
 NODE_DISPLAY_NAME_MAPPINGS = {}
 
-__version__ = "1.2.0"
+__version__ = "1.2.1"
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _cfg = assets_core.load_config(BASE_DIR)
@@ -104,6 +104,21 @@ async def asset_list_output(request):
 
     def _go():
         return assets_core.list_output(_current_output_dir(), path, _arch,
+                                       assets_core.load_open_state(_arch))
+
+    try:
+        result = await asyncio.to_thread(_go)
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)})
+    return web.json_response(result)
+
+
+@PromptServer.instance.routes.get("/asset/folder_tree")
+async def asset_folder_tree(request):
+    """整个 output 的文件夹树(左栏一次拉全, v1.2.1)"""
+
+    def _go():
+        return assets_core.folder_tree(_current_output_dir(),
                                        assets_core.load_open_state(_arch))
 
     try:
