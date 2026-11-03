@@ -5,6 +5,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 > 本文件记录 **ComfyUI-AssetManager** 的所有重要改动，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.2.4] - 2026-11-03
+
+### Added · 新增
+
+- **The running version is now shown in the panel.** Next to the panel title you'll see `v1.2.4`, so after a `git pull` + hard refresh you can tell at a glance whether the browser has picked up the new build (the `version` field is served by `GET /asset/config`).<br>
+  **面板标题旁现在显示运行版本。** 标题右侧会显示 `v1.2.4`，`git pull` + 硬刷新之后一眼就能确认浏览器是否已经加载新版本（`GET /asset/config` 响应里新增 `version` 字段）。
+
+### Fixed · 修复
+
+- **Folder-view paging arrows no longer vanish when a filter leaves a single item.** Paging normally follows the list you're looking at (same as the grid and calendar views). But if the search box or the image/video filter narrowed the folder down to one item while the folder actually holds more, the left/right arrows were hidden — the folder view now falls back to the **whole folder's file list** for paging in exactly that case.<br>
+  **筛选后只剩一张时，文件夹视图的翻页箭头不再消失。** 翻页正常遵循"你正在看的那一批"（与网格/日历一致）；但如果搜索框或图片/视频筛选把文件夹收窄到只剩一项、而文件夹里其实还有别的，左右箭头就会被隐藏——现在遇到这种情况会改用**整个文件夹的文件列表**来翻页。
+  > 说明：`←`/`→` 箭头自 **1.2.2** 起就已存在于文件夹视图的大图预览（`1.2.1` 确实没有）；若你在界面上看不到，请先确认标题旁的版本号并 Ctrl+F5 硬刷新。<br>
+  > Note: the `←`/`→` arrows have existed in the folder view's preview since **1.2.2** (they were genuinely missing in 1.2.1); if you don't see them, check the version next to the title and hard-refresh with Ctrl+F5.
+
 ## [1.2.3] - 2026-11-03
 
 ### Fixed · 修复
@@ -100,7 +114,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Preview navigation with `←` / `→` inside the large-image dialog.<br>
   大图预览内用 `←` / `→` 翻页。
 
-[1.2.3]: https://github.com/wardenlee/ComfyUI-AssetManager/compare/2abd11b3...HEAD
+[1.2.4]: https://github.com/wardenlee/ComfyUI-AssetManager/compare/452927af...HEAD
+[1.2.3]: https://github.com/wardenlee/ComfyUI-AssetManager/compare/2abd11b3...452927af
 [1.2.2]: https://github.com/wardenlee/ComfyUI-AssetManager/compare/d06d239...2abd11b3
 [1.2.1]: https://github.com/wardenlee/ComfyUI-AssetManager/compare/29a9c05...d06d239
 [1.2.0]: https://github.com/wardenlee/ComfyUI-AssetManager/compare/74dcc0a...29a9c05

@@ -144,6 +144,8 @@ A `config.json` is generated on your first settings save (template at [`config.e
   **在文件夹视图里剪切粘贴搬移资产时，归档链接会一起搬。** 归档副本仍留在库里原来的位置，只改写条目记录的来源路径，所以 ComfyUI 照样能预览、删除时也照样把两份都删掉；目标文件夹里同名冲突会自动加 `_1` 后缀，绝不覆盖。
 - **Renaming does the same.** Renaming a folder relinks **every** asset inside it (including sub-folders), so nothing gets archived twice. Your recorded "last opened" time follows the move/rename too, so sorting by it stays correct.<br>
   **改名同理。** 文件夹改名会把里面**每一个**资产（含子目录）的归档链接一起改写，所以不会出现重复归档；你的「打开时间」记录也会跟着搬/改名一起迁移，按它排序依然正确。
+- **The running version is visible in the panel.** Next to the panel title you'll see the plugin version (e.g. `v1.2.4`), so after a `git pull` + hard refresh you can tell at a glance whether the browser actually picked up the new build.<br>
+  **面板里能看到当前版本号。** 标题右侧会显示插件版本（如 `v1.2.4`），`git pull` + 硬刷新后一眼就能确认浏览器是否已加载新版本。
 - **Keyboard navigation is scoped.** `↑` / `↓` only drive the folder tree while the Asset Manager panel is open, the folder view is active, no large preview is open, and the focus is not in a text field — ComfyUI's own canvas shortcuts are untouched in every other case.<br>
   **键盘导航有作用域限制。** 只有「资产面板已打开 + 处于文件夹视图 + 没开大图预览 + 焦点不在输入框」时，`↑` / `↓` 才驱动文件夹树；其余情况完全不影响 ComfyUI 画布自身的快捷键。
 - **Folder downloads are recursive and capped.** Downloading a selected folder walks its sub-folders and saves every file at once (5000-file cap — above that the download stops with a message instead of silently dropping files).<br>

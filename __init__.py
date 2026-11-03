@@ -20,7 +20,7 @@ WEB_DIRECTORY = "web"
 NODE_CLASS_MAPPINGS = {}
 NODE_DISPLAY_NAME_MAPPINGS = {}
 
-__version__ = "1.2.3"
+__version__ = "1.2.4"
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _cfg = assets_core.load_config(BASE_DIR)
@@ -257,6 +257,7 @@ async def asset_config(request):
     _, _bak_default = assets_core.default_asset_dirs(BASE_DIR)
     return web.json_response({
         "ok": True,
+        "version": __version__,          # v1.2.4: 前端把它显示在面板标题旁, 便于确认真机跑的是哪一版
         "config": _cfg,
         "archive_dir": _arch,
         "current_output_dir": _current_output_dir(),

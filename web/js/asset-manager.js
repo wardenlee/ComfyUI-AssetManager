@@ -608,9 +608,12 @@ app.registerExtension({
 
     const panelTitle = $el("h2");
     bindText(panelTitle, "🗂 资产管理");
+    // v1.2.4: 标题旁常显运行版本 —— 部署靠 pull + Ctrl+F5, 一眼就能确认浏览器跑的是哪一版
+    const verEl = $el("span", { textContent: "", style: { fontSize: "11px", color: "var(--descrip-text,#999)" } });
     const panel = $el("div.asm-panel", {}, [
       $el("div.asm-header", {}, [
         panelTitle,
+        verEl,
         $el("span.sp"),
         $el("button.asm-x", { textContent: "✕", onclick: closePanel }),
       ]),
@@ -1267,7 +1270,13 @@ app.registerExtension({
 
     // 文件夹视图里预览 output 文件; v1.2.2: 与网格/日历一致, ←/→ 翻页(循环 / n 总数 / 预加载)
     function openOutputPreview(f, listArg) {
-      const list = (Array.isArray(listArg) && listArg.length ? listArg : filterFolderFiles()).slice();
+      let list = (Array.isArray(listArg) && listArg.length ? listArg : filterFolderFiles()).slice();
+      // v1.2.4: 若筛选后的列表只剩一项、但当前文件夹里其实有多张, 则改用整个文件夹的
+      // 文件列表来翻页 —— 否则一侧的箭头会跟着消失(用户反馈"看不到左右箭头"的常见触发)。
+      if (list.length < 2) {
+        const all = sortItems((folderData.files || []).slice(), sortMode, (x) => x.name, (x) => x.created, (x) => x.opened);
+        if (all.length > list.length) list = all;
+      }
       let idx = list.findIndex((x) => x.rel === f.rel);
       if (idx < 0) { list.unshift(f); idx = 0; }
       if (pv) closePreview();
@@ -1982,6 +1991,8 @@ app.registerExtension({
       const d = await res.json();
       if (d.ok) { runs = d.runs || []; rebuildByDate(); }
       try { curConfig = await (await fetch("./asset/config")).json(); } catch (e) {}
+      // v1.2.4: 把插件版本显示在标题旁(拿不到就留空, 不影响其它功能)
+      try { if (curConfig && curConfig.version) verEl.textContent = "v" + curConfig.version; } catch (e) {}
     }
     async function openPanel() {
       detectLang();
