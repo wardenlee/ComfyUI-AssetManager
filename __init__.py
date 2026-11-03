@@ -20,7 +20,7 @@ WEB_DIRECTORY = "web"
 NODE_CLASS_MAPPINGS = {}
 NODE_DISPLAY_NAME_MAPPINGS = {}
 
-__version__ = "1.2.2"
+__version__ = "1.2.3"
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _cfg = assets_core.load_config(BASE_DIR)
@@ -185,6 +185,24 @@ async def asset_delete_output_dir(request):
             return assets_core.delete_output_dir(_current_output_dir(),
                                                  body.get("path", ""),
                                                  bool(body.get("recursive", False)))
+
+    try:
+        result = await asyncio.to_thread(_go)
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)})
+    return web.json_response(result)
+
+
+@PromptServer.instance.routes.post("/asset/delete_output_file")
+async def asset_delete_output_file(request):
+    """删除 output 下的单个文件(可选连带删归档条目, v1.2.3)"""
+    body = await _json_body(request)
+
+    def _go():
+        with _LOCK:
+            return assets_core.delete_output_file(_current_output_dir(),
+                                                  body.get("path", ""),
+                                                  _arch, _state)
 
     try:
         result = await asyncio.to_thread(_go)

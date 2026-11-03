@@ -1191,6 +1191,64 @@ def delete_output_dir(output_dir, rel="", recursive=False):
     return {"ok": True, "files": n_files}
 
 
+def delete_output_file(output_dir, rel="", archive_dir=None, state=None):
+    """删除 output 下的单个文件(v1.2.3)
+
+    与网格视图预览里的「从硬盘删除」同语义: 若有归档条目(source_rel == rel)一并删除,
+    并清掉归档状态键 —— 这样两个视图删同一个资产的结果一致。
+    -> {"ok": True, "rel": rel, "archives_removed": n}
+    """
+    root = _output_root(output_dir)
+    if root is None:
+        return {"ok": False, "error": "Directory not found"}
+    try:
+        rel_n = _norm_rel(rel)
+    except ValueError:
+        return {"ok": False, "error": "Invalid path"}
+    if not rel_n:
+        return {"ok": False, "error": "Invalid path"}
+    try:
+        target = _resolve_in(root, rel_n)
+    except ValueError:
+        return {"ok": False, "error": "Invalid path"}
+    if target.is_dir():
+        return {"ok": False, "error": "Not a file"}
+    if not target.is_file():
+        return {"ok": False, "error": "Not found"}
+    try:
+        target.unlink()
+    except OSError as e:
+        return {"ok": False, "error": "Failed to delete file: " + _err_brief(e)}
+
+    removed = 0
+    if archive_dir:
+        arch = Path(archive_dir)
+        try:
+            info_files = list(arch.glob("*/*/info.json"))
+        except OSError:
+            info_files = []
+        for fp in info_files:
+            try:
+                info = json.loads(fp.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if not isinstance(info, dict) or info.get("source_rel") != rel_n:
+                continue
+            try:
+                shutil.rmtree(str(fp.parent))
+                removed += 1
+            except Exception:
+                pass
+    if state is not None:
+        state.pop(rel_n, None)
+        if archive_dir:
+            try:
+                save_state(archive_dir, state)
+            except Exception:
+                pass
+    return {"ok": True, "rel": rel_n, "archives_removed": removed}
+
+
 def move_output(output_dir, rels, dest_rel="", archive_dir=None, state=None):
     """把 output 下的文件移动到目标文件夹(仅文件), 并同步归档条目 + 归档状态键"""
     if not isinstance(rels, list):

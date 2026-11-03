@@ -96,7 +96,8 @@ const STYLE = `
 .asm-fside { flex:0 0 252px; width:252px; min-height:0; overflow:auto; box-sizing:border-box; padding-right:10px; border-right:1px solid var(--border-color,#3a3a3a); }
 .asm-fbtns { display:flex; flex-wrap:wrap; gap:6px; }
 .asm-fbtns .asm-btn { padding:4px 8px; font-size:12px; }
-.asm-crumbs { display:flex; flex-wrap:wrap; align-items:center; font-size:12px; color:var(--descrip-text,#aaa); margin:8px 0 6px; word-break:break-all; line-height:1.7; }
+/* v1.2.3: 导航行常驻并预留固定高度 —— 否则在根目录隐藏它会让整棵树上下跳 */
+.asm-crumbs { display:flex; flex-wrap:wrap; align-items:center; font-size:12px; color:var(--descrip-text,#aaa); margin:8px 0 6px; word-break:break-all; line-height:1.7; min-height:22px; }
 .asm-crumb { cursor:pointer; color:#5b8cff; }
 .asm-crumb:hover { text-decoration:underline; }
 .asm-crumbsep { color:var(--descrip-text,#888); }
@@ -264,6 +265,7 @@ app.registerExtension({
       "打开: ": "Opened: ",
       "关闭": "Close",
       "该文件无法预览": "This file cannot be previewed",
+      "该文件未归档，没有提示词元数据": "Not archived — no prompt metadata",
       "根": "Root",
       "下载": "Download",
       "（根目录不能改名）": "(the root folder cannot be renamed)",
@@ -509,8 +511,12 @@ app.registerExtension({
     // v1.2.2: 下载选中(文件或文件夹, 文件夹递归含子目录)
     const fDlBtn = bindText($el("button.asm-btn", { onclick: () => downloadOutputSelection() }), "下载");
     const fRefreshBtn = bindText($el("button.asm-btn", { onclick: () => reloadFolderView() }), "刷新");
+    // v1.2.3: 分两行 —— 行1「文件夹」(新建/改名/删除/刷新), 行2「选中项」(多选/剪切/粘贴/下载)
+    const fRowFolder = $el("div.asm-fbtns", {}, [fNewBtn, fRenBtn, fDelBtn, fRefreshBtn]);
+    const fRowPick = $el("div.asm-fbtns", {}, [fMultiBtn, fCutBtn, fPasteBtn, fDlBtn]);
     const fSide = $el("div.asm-fside", {}, [
-      $el("div.asm-fbtns", {}, [fNewBtn, fRenBtn, fDelBtn, fMultiBtn, fCutBtn, fPasteBtn, fDlBtn, fRefreshBtn]),
+      fRowFolder,
+      fRowPick,
       fCrumbs,
       fTreeEl,
     ]);
@@ -746,11 +752,11 @@ app.registerExtension({
     function treeSig(flat) {
       return flat.map((n) => n.rel + ":" + (n.file_count || 0)).join("|");
     }
-    // v1.2.2: 面包屑不再显示 "output 根" 说明文字; 在根目录时面包屑整体隐藏(不占位)
+    // v1.2.2: 面包屑不再显示 "output 根" 说明文字; v1.2.3: 该行**常驻**(根目录时为空但占位),
+    // 否则"点根→隐藏→整棵树上移 / 点文件夹→出现→整棵树下移"会上下跳动
     function renderCrumbs() {
       fCrumbs.innerHTML = "";
       const parts = folderPath ? folderPath.split("/") : [];
-      fCrumbs.style.display = parts.length ? "" : "none";
       let acc = "";
       for (let i = 0; i < parts.length; i++) {
         acc = acc ? acc + "/" + parts[i] : parts[i];
@@ -1114,15 +1120,19 @@ app.registerExtension({
     // ---------- 多选 / 批量删除 ----------
     function updateBatchBtn() {
       // 文件夹视图的选中集合存 rel(非 run dir), 批量删除/下载只对归档条目有效 → 该视图下隐藏这两个按钮
+      // v1.2.3: 顶部工具栏的「多选」也在此视图隐藏(左栏行2 有唯一入口), 消除重复按钮
       if (view === "folder") {
         batchBtn.style.display = "none";
         batchDownloadBtn.style.display = "none";
+        multiBtn.style.display = "none";
       } else if (multi && selected.size > 0) {
+        multiBtn.style.display = "";
         batchBtn.style.display = "";
         batchBtn.textContent = t("🗑 删除选中") + "(" + selected.size + ")";
         batchDownloadBtn.style.display = "";
         batchDownloadBtn.textContent = t("⬇ 下载选中") + "(" + selected.size + ")";
       } else {
+        multiBtn.style.display = "";
         batchBtn.style.display = "none";
         batchDownloadBtn.style.display = "none";
       }
@@ -1302,16 +1312,39 @@ app.registerExtension({
         pagerEl.style.display = solo ? "none" : "";
         preload(idx);
         reportOpen("out:" + cur.rel); // 翻页也上报打开时间
+        // v1.2.3: 与网格/日历预览一致 —— 已归档的文件可复制提示词/下载 workflow
+        ta.value = "";
+        copyBtn.disabled = true;
+        wfBtn.disabled = true;
+        if (!cur.run_dir) {
+          bindText(ta, "该文件未归档，没有提示词元数据", "placeholder");
+          return;
+        }
+        bindText(ta, "提示词", "placeholder");
+        fetchRunInfo(cur.run_dir).then((info) => {
+          if (list[idx] !== cur) return; // 翻页了就别回填
+          if (!info) { bindText(ta, "该文件未归档，没有提示词元数据", "placeholder"); return; }
+          ta.value = (info.positive || "") + (info.negative ? "\n\nNegative prompt: " + info.negative : "");
+          copyBtn.disabled = !ta.value;
+          wfBtn.disabled = !info.has_workflow;
+        });
       }
       function step(d) { if (list.length > 1) show(idx + d); }
 
+      const ta = $el("textarea");
+      bindText(ta, "提示词", "placeholder");
+      const copyBtn = bindText($el("button.asm-btn", { onclick: () => { ta.select(); navigator.clipboard?.writeText(ta.value).then(() => statusMsg(t("已复制"))); } }), "复制提示词");
+      const wfBtn = bindText($el("button.asm-btn.primary", { onclick: () => downloadOutputWorkflow(list[idx]) }), "下载 workflow.json");
+      const delBtn = bindText($el("button.asm-btn.danger", { onclick: () => deleteOutputFile(list[idx]) }), "🗑 从硬盘删除");
       const mediaWrap = $el("div.mediaWrap", {}, [mediaBox, prevBtn, nextBtn]);
       const pn = $el("div.pn", {}, [
         $el("button.x", { textContent: "✕", onclick: () => closePreview() }),
         pagerEl,
         mediaWrap,
         rowsEl,
-        $el("div.btns", {}, [
+        bindText($el("label", { style: { fontSize: "12px" } }), "提示词"),
+        ta,
+        $el("div.btns", {}, [copyBtn, wfBtn, delBtn,
           bindText($el("button.asm-btn", { onclick: () => closePreview() }), "关闭"),
         ]),
       ]);
@@ -1320,6 +1353,47 @@ app.registerExtension({
       document.body.appendChild(m);
       pv = { m, step };
       show(idx);
+    }
+    // 归档 info.json 缓存 + 取用(v1.2.3, 供文件夹视图预览对齐其它视图)
+    const runInfoCache = {};
+    async function fetchRunInfo(dir) {
+      if (dir in runInfoCache) return runInfoCache[dir];
+      let info = null;
+      try {
+        const res = await fetch("./asset/file?p=" + encodeURIComponent(dir + "/info.json"), { cache: "no-store" });
+        if (res.ok) info = await res.json();
+      } catch (e) { info = null; }
+      runInfoCache[dir] = info;
+      return info;
+    }
+    function downloadOutputWorkflow(f) {
+      if (!f || !f.run_dir) { statusMsg(t("该产物未携带 workflow 元数据")); return; }
+      fetch("./asset/file?p=" + encodeURIComponent(f.run_dir + "/workflow.json"))
+        .then(x => x.blob()).then(b => {
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(b);
+          a.download = safeName(f.name) + ".workflow.json";
+          a.click();
+        }).catch(() => statusMsg(t("下载失败")));
+    }
+    // 删除单个 output 文件(已归档的连带删归档条目, 与网格预览的删除同语义)
+    async function deleteOutputFile(f) {
+      if (!f) return;
+      const archived = !!f.run_dir;
+      const msg = LANG === "zh"
+        ? ("确定要从硬盘删除该文件吗?\n\n" + f.rel + (archived ? "\n\n将同时删除它的归档副本, 无法恢复。" : "\n\n无法恢复。"))
+        : ("Delete this file from disk?\n\n" + f.rel + (archived ? "\n\nIts archive copy will be deleted as well. This cannot be undone." : "\n\nThis cannot be undone."));
+      if (!confirm(msg)) return;
+      const d = await postJSON("./asset/delete_output_file", { path: f.rel });
+      if (!d.ok) { statusMsg(t("删除失败: ") + (terr(d.error) || "")); return; }
+      statusMsg(t("已从硬盘删除"));
+      const at = list.indexOf(f);
+      if (at >= 0) list.splice(at, 1);
+      if (!list.length) closePreview();
+      else show(Math.min(at < 0 ? 0 : at, list.length - 1));
+      await loadRuns();
+      await loadFolderTree();
+      await loadFolder(folderPath);
     }
 
     // 预览打开时: ←/→ 翻页, Esc 关闭(文本域内方向键仍用于移光标)

@@ -5,6 +5,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 > 本文件记录 **ComfyUI-AssetManager** 的所有重要改动，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.2.3] - 2026-11-03
+
+### Fixed · 修复
+
+- **The folder tree no longer jumps up and down.** The breadcrumb row used to be hidden entirely while you were at the root, so clicking `根` / any folder made the whole tree shift by about 30px. That row now keeps a fixed height and stays in place, so the tree stays put.<br>
+  **文件夹树不再上下跳动。** 以前在根目录时面包屑整行被隐藏，于是点 `根` 或点文件夹都会让整棵树挪动约 30px。现在该行保留固定高度、始终占位，树不再移动。
+- **Folder view: files now have the same buttons as the other views.** The large preview in the folder view previously offered only `关闭`; it now has the same `复制提示词` / `下载 workflow.json` / `🗑 从硬盘删除` as the grid and calendar previews (plus the existing `←` / `→` paging). Files that were never archived have the prompt / workflow buttons greyed out, and the delete confirmation says when the archive copy will be removed too.<br>
+  **文件夹视图里的文件现在和其他视图有相同的按钮。** 文件夹视图的大图预览以前只有 `关闭`；现在与网格/日历预览一样有 `复制提示词` / `下载 workflow.json` / `🗑 从硬盘删除`（外加原有的 `←` / `→` 翻页）。从未归档过的文件，提示词与 workflow 两个按钮置灰；删除确认框会说明是否会连带删掉归档副本。
+
+### Changed · 改动
+
+- **Left panel buttons regrouped into two rows.** Row 1 is folder actions (`新建` / `改名` / `删除` / `刷新`) and row 2 is selection actions (`多选` / `剪切` / `粘贴` / `下载`); the duplicated `多选` is no longer shown in the top toolbar while the folder view is active, so no action appears twice.<br>
+  **左栏按钮重新分两行。** 行1 是文件夹操作（`新建` / `改名` / `删除` / `刷新`），行2 是选中项操作（`多选` / `剪切` / `粘贴` / `下载`）；文件夹视图下顶部工具栏不再显示重复的 `多选`，同一个功能不会出现两次。
+
+### Added · 新增
+
+- New route `POST /asset/delete_output_file` deletes a single file from the output directory, removing its archive entry too when it has one (same behaviour as deleting an asset from the grid), so both views agree on what deleting means.<br>
+  新增路由 `POST /asset/delete_output_file`，删除输出目录里的单个文件；若它有归档条目则一并删除（与在网格里删除资产的行为一致），两个视图对"删除"的语义保持统一。
+
 ## [1.2.2] - 2026-11-03
 
 ### Changed · 改动
@@ -81,6 +100,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Preview navigation with `←` / `→` inside the large-image dialog.<br>
   大图预览内用 `←` / `→` 翻页。
 
-[1.2.2]: https://github.com/wardenlee/ComfyUI-AssetManager/compare/d06d239...HEAD
+[1.2.3]: https://github.com/wardenlee/ComfyUI-AssetManager/compare/2abd11b3...HEAD
+[1.2.2]: https://github.com/wardenlee/ComfyUI-AssetManager/compare/d06d239...2abd11b3
 [1.2.1]: https://github.com/wardenlee/ComfyUI-AssetManager/compare/29a9c05...d06d239
 [1.2.0]: https://github.com/wardenlee/ComfyUI-AssetManager/compare/74dcc0a...29a9c05
