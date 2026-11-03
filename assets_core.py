@@ -973,6 +973,74 @@ def folder_tree(output_dir, open_state=None, max_depth=8, max_nodes=2000):
             "node_count": stat_count[0], "nodes": nodes}
 
 
+def _kind_of(name):
+    ext = Path(name).suffix.lower()
+    if ext in IMAGE_EXT:
+        return "image"
+    if ext in VIDEO_EXT:
+        return "video"
+    return "other"
+
+
+def list_output_files(output_dir, rel="", max_files=5000):
+    """递归列出 rel 文件夹下的所有文件(v1.2.2, 供「下载文件夹」用)
+
+    -> {"ok","path","truncated","count","files":[{"rel","name","kind","size","mtime"}]}
+    files[].rel 相对 output 根; 跳过 "." 开头的文件与目录; 超 max_files 置 truncated 并停止。
+    """
+    root = _output_root(output_dir)
+    if root is None:
+        return {"ok": False, "error": "Directory not found"}
+    try:
+        limit = int(max_files)
+    except Exception:
+        limit = 5000
+    if limit < 1:
+        limit = 5000
+    try:
+        rel_n = _norm_rel(rel)
+        target = _resolve_in(root, rel_n)
+    except ValueError:
+        return {"ok": False, "error": "Directory not found"}
+
+    if target.is_file():
+        try:
+            st = target.stat()
+        except OSError:
+            return {"ok": False, "error": "Directory not found"}
+        return {"ok": True, "path": rel_n, "truncated": False, "count": 1,
+                "files": [{"rel": rel_n, "name": target.name, "kind": _kind_of(target.name),
+                           "size": int(st.st_size), "mtime": _iso_ts(st.st_mtime)}]}
+    if not target.is_dir():
+        return {"ok": False, "error": "Directory not found"}
+
+    files = []
+    truncated = False
+    for cur, dirs, names in os.walk(str(target)):
+        dirs[:] = [d for d in dirs if not d.startswith(".")]
+        for nm in names:
+            if nm.startswith("."):
+                continue
+            if len(files) >= limit:
+                truncated = True
+                break
+            fp = Path(cur) / nm
+            try:
+                st = fp.stat()
+            except OSError:
+                continue
+            try:
+                child_rel = fp.relative_to(root).as_posix()
+            except ValueError:
+                continue
+            files.append({"rel": child_rel, "name": nm, "kind": _kind_of(nm),
+                          "size": int(st.st_size), "mtime": _iso_ts(st.st_mtime)})
+        if truncated:
+            break
+    return {"ok": True, "path": rel_n, "truncated": truncated,
+            "count": len(files), "files": files}
+
+
 def mkdir_output(output_dir, rel_parent="", name=""):
     root = _output_root(output_dir)
     if root is None:

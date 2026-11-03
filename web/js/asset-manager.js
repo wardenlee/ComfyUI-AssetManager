@@ -89,8 +89,11 @@ const STYLE = `
 /* 排序下拉 / 文件夹视图 */
 .asm-sort { background:var(--comfy-input-bg,#333); border:1px solid var(--border-color,#444); color:var(--input-text,#eee); border-radius:6px; padding:6px 8px; font-size:13px; }
 .asm-lbl { font-size:12px; color:var(--descrip-text,#aaa); }
-.asm-folder { display:flex; align-items:flex-start; gap:14px; }
-.asm-fside { flex:0 0 252px; width:252px; max-height:68vh; overflow:auto; box-sizing:border-box; padding-right:10px; border-right:1px solid var(--border-color,#3a3a3a); }
+/* v1.2.2: 文件夹视图/日历视图下 body 不滚, 左右两栏各自独立滚动 */
+.asm-body.asm-noscroll { overflow:hidden; display:flex; flex-direction:column; }
+.asm-body.asm-noscroll > .asm-folder, .asm-body.asm-noscroll > .asm-cal { flex:1; min-height:0; }
+.asm-folder { display:flex; align-items:stretch; gap:14px; height:100%; min-height:0; }
+.asm-fside { flex:0 0 252px; width:252px; min-height:0; overflow:auto; box-sizing:border-box; padding-right:10px; border-right:1px solid var(--border-color,#3a3a3a); }
 .asm-fbtns { display:flex; flex-wrap:wrap; gap:6px; }
 .asm-fbtns .asm-btn { padding:4px 8px; font-size:12px; }
 .asm-crumbs { display:flex; flex-wrap:wrap; align-items:center; font-size:12px; color:var(--descrip-text,#aaa); margin:8px 0 6px; word-break:break-all; line-height:1.7; }
@@ -98,11 +101,17 @@ const STYLE = `
 .asm-crumb:hover { text-decoration:underline; }
 .asm-crumbsep { color:var(--descrip-text,#888); }
 .asm-tree { border-top:1px solid var(--border-color,#3a3a3a); padding-top:4px; }
-.asm-trow { padding:5px 8px; font-size:12px; cursor:pointer; border-radius:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--descrip-text,#bbb); }
+/* v1.2.2: 文件夹名自动换行(不再省略号截断) */
+.asm-trow { padding:5px 8px; font-size:12px; cursor:pointer; border-radius:6px; white-space:normal; word-break:break-all; line-height:1.35; color:var(--descrip-text,#bbb); }
 .asm-trow:hover { background:rgba(91,140,255,.15); color:var(--fg-color,#eee); }
 .asm-trow.cur { background:rgba(91,140,255,.22); color:#5b8cff; font-weight:600; }
+.asm-trow.sel { background:rgba(91,140,255,.16); }
+.asm-trow.sel .asm-ttick { color:#5b8cff; font-weight:700; }
+.asm-ttick { display:inline-block; width:14px; color:transparent; }
 .asm-fempty { color:var(--descrip-text,#888); font-size:12px; padding:10px 8px; white-space:normal; }
-.asm-fmain { flex:1; min-width:0; }
+.asm-fmain { flex:1; min-width:0; min-height:0; overflow:auto; }
+.asm-cal { display:grid; grid-template-columns:minmax(400px,540px) 1fr; gap:28px; align-items:stretch; height:100%; min-height:0; }
+.asm-cal > * { min-height:0; overflow:auto; }
 .asm-fgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:12px; }
 .asm-fcard .pico { display:flex; align-items:center; justify-content:center; height:100%; font-size:34px; color:var(--descrip-text,#999); }
 .asm-fcard .m video { width:100%; height:100%; object-fit:cover; display:block; }
@@ -229,7 +238,6 @@ app.registerExtension({
       "打开时间↑": "Opened ↑",
       "名称 A→Z": "Name A→Z",
       "名称 Z→A": "Name Z→A",
-      "output 根": "output root",
       "新建": "New",
       "改名": "Rename",
       "删除": "Delete",
@@ -241,8 +249,6 @@ app.registerExtension({
       "没有匹配当前筛选的图片": "No images match the current filter",
       "（请先选中要移动的项）": "(select the items to move first)",
       "剪贴板为空": "Clipboard is empty",
-      "（根目录不能改名）": "(the output root cannot be renamed)",
-      "（根目录不能删除）": "(the output root cannot be deleted)",
       "新建文件夹": "New folder",
       "新名称:": "New name:",
       "文件夹加载失败: ": "Failed to load folder: ",
@@ -258,6 +264,20 @@ app.registerExtension({
       "打开: ": "Opened: ",
       "关闭": "Close",
       "该文件无法预览": "This file cannot be previewed",
+      "根": "Root",
+      "下载": "Download",
+      "（根目录不能改名）": "(the root folder cannot be renamed)",
+      "（根目录不能删除）": "(the root folder cannot be deleted)",
+      "已选 ": "Selected ",
+      " 个文件夹": " folder(s)",
+      " 个文件": " file(s)",
+      "正在读取文件夹清单…": "Reading folder contents…",
+      "正在下载 N 个文件": "Downloading N file(s)",
+      "没有选中要下载的内容": "Nothing selected to download",
+      "文件夹文件过多，已中止下载": "Folder has too many files; download aborted",
+      "该文件下载失败": "This file could not be downloaded",
+      "删除失败: ": "Delete failed: ",
+      "已删除 ": "Deleted ",
     };
     function t(zh) { return LANG === "zh" ? zh : (L10N[zh] !== undefined ? L10N[zh] : zh); }
     const ERR_L10N = {
@@ -327,6 +347,9 @@ app.registerExtension({
     let multi = false;
     const selected = new Set();
     let selAnchor = null; // 多选连选锚点(上次点中的 dir)
+    // v1.2.2: 文件夹选中集合(与文件 selected 互斥; 同一时刻只有一种选中类型)
+    const selFolders = new Set();
+    let folAnchor = null;  // 文件夹连选锚点
     let pollTimer = null;
     let curConfig = {};
 
@@ -475,7 +498,7 @@ app.registerExtension({
     // ---------- 文件夹视图骨架(左栏: 按钮区 → 面包屑 → 文件夹树; 右栏: 纯图片网格) ----------
     const fCrumbs = $el("div.asm-crumbs");
     const fTreeEl = $el("div.asm-tree");
-    // 新增按钮一律无图标(契约 §6.3); 顺序: 新建 改名 删除 多选 剪切 粘贴 刷新
+    // 新增按钮一律无图标(契约 §6.3); 顺序: 新建 改名 删除 多选 剪切 粘贴 下载 刷新
     const fNewBtn = bindText($el("button.asm-btn", { onclick: () => newFolder() }), "新建");
     const fRenBtn = bindText($el("button.asm-btn", { onclick: () => renameFolder() }), "改名");
     const fDelBtn = bindText($el("button.asm-btn.danger", { onclick: () => deleteFolder() }), "删除");
@@ -483,9 +506,11 @@ app.registerExtension({
     const fMultiBtn = bindText($el("button.asm-btn", { onclick: () => toggleMulti() }), "多选");
     const fCutBtn = bindText($el("button.asm-btn", { onclick: () => cutSelected() }), "剪切");
     const fPasteBtn = bindText($el("button.asm-btn", { onclick: () => pasteClipboard() }), "粘贴");
+    // v1.2.2: 下载选中(文件或文件夹, 文件夹递归含子目录)
+    const fDlBtn = bindText($el("button.asm-btn", { onclick: () => downloadOutputSelection() }), "下载");
     const fRefreshBtn = bindText($el("button.asm-btn", { onclick: () => reloadFolderView() }), "刷新");
     const fSide = $el("div.asm-fside", {}, [
-      $el("div.asm-fbtns", {}, [fNewBtn, fRenBtn, fDelBtn, fMultiBtn, fCutBtn, fPasteBtn, fRefreshBtn]),
+      $el("div.asm-fbtns", {}, [fNewBtn, fRenBtn, fDelBtn, fMultiBtn, fCutBtn, fPasteBtn, fDlBtn, fRefreshBtn]),
       fCrumbs,
       fTreeEl,
     ]);
@@ -509,7 +534,8 @@ app.registerExtension({
         Object.values(viewBtns).forEach(x => x.classList.remove("on"));
         b.classList.add("on");
         // 文件夹视图的选中集合存 rel, 网格/日历存 dir, 二者不通用 → 进出文件夹视图时清空选中
-        if (prev === "folder" || v === "folder") { selected.clear(); selAnchor = null; }
+        // 文件夹视图的选中集合存 rel(与网格/日历的 run dir 不同键空间) → 进出文件夹视图时清空两类选中
+        if (prev === "folder" || v === "folder") { selected.clear(); selAnchor = null; selFolders.clear(); folAnchor = null; }
         refresh();
         if (v === "folder") { loadFolderTree(); loadFolder(folderPath); }
       };
@@ -720,37 +746,41 @@ app.registerExtension({
     function treeSig(flat) {
       return flat.map((n) => n.rel + ":" + (n.file_count || 0)).join("|");
     }
+    // v1.2.2: 面包屑不再显示 "output 根" 说明文字; 在根目录时面包屑整体隐藏(不占位)
     function renderCrumbs() {
       fCrumbs.innerHTML = "";
-      fCrumbs.appendChild($el("span.asm-crumb", { textContent: t("output 根"), onclick: () => goToFolder("") }));
       const parts = folderPath ? folderPath.split("/") : [];
+      fCrumbs.style.display = parts.length ? "" : "none";
       let acc = "";
-      for (const p of parts) {
-        acc = acc ? acc + "/" + p : p;
+      for (let i = 0; i < parts.length; i++) {
+        acc = acc ? acc + "/" + parts[i] : parts[i];
         const rel = acc;
-        fCrumbs.appendChild($el("span.asm-crumbsep", { textContent: " / " }));
-        fCrumbs.appendChild($el("span.asm-crumb", { textContent: p, onclick: () => goToFolder(rel) }));
+        if (i > 0) fCrumbs.appendChild($el("span.asm-crumbsep", { textContent: " / " }));
+        fCrumbs.appendChild($el("span.asm-crumb", { textContent: parts[i], onclick: () => goToFolder(rel) }));
       }
     }
-    // 左栏文件夹树: 按 sortMode 排序 + 扁平化, 每级缩进 12px, 当前项高亮, 行显示 名称 (文件数)
+    // 左栏文件夹树: v1.2.2 顶部固定一行「根」(取代已删除的面包屑根说明);
+    // 每行 = 勾选位 + 名称(文件数); 缩进 12px/级; 当前项高亮
+    function mkTreeRow(rel, name, depth, count) {
+      const row = $el("div.asm-trow");
+      row.style.paddingLeft = (4 + (depth || 0) * 12) + "px";
+      row.title = rel || t("根");
+      const sel = selFolders.has(rel);
+      row.appendChild($el("span.asm-ttick", { textContent: sel ? "✓" : "" }));
+      row.appendChild($el("span", { textContent: (count === null || count === undefined) ? name : (name + " (" + count + ")") }));
+      if (sel) row.classList.add("sel");
+      row.onclick = (ev) => pickFolder(rel, ev);
+      treeRowEls[rel] = row;
+      fTreeEl.appendChild(row);
+      return row;
+    }
     function renderTree() {
-      flatTree = buildFlatTree((folderTree && folderTree.nodes) || [], []);
+      flatTree = [{ rel: "", name: t("根"), depth: 0, file_count: null, children: [] }]
+        .concat(buildFlatTree((folderTree && folderTree.nodes) || [], []));
       fTreeEl.innerHTML = "";
       treeRowEls = {};
       treeCurEl = null;
-      if (!flatTree.length) {
-        fTreeEl.appendChild(bindText($el("div.asm-fempty"), "（无子目录）"));
-        return;
-      }
-      for (const n of flatTree) {
-        const row = $el("div.asm-trow");
-        row.style.paddingLeft = (4 + (n.depth || 1) * 12) + "px";
-        row.title = n.rel;
-        row.textContent = n.name + " (" + (n.file_count || 0) + ")";
-        row.onclick = () => goToFolder(n.rel);
-        treeRowEls[n.rel] = row;
-        fTreeEl.appendChild(row);
-      }
+      for (const n of flatTree) mkTreeRow(n.rel, n.name, n.depth || 0, n.file_count);
       if (folderTree && folderTree.truncated) {
         fTreeEl.appendChild(bindText($el("div.asm-fempty"), "（文件夹过多，仅显示部分）"));
       }
@@ -768,6 +798,31 @@ app.registerExtension({
     function goToFolder(rel, scroll) {
       enterFolder(rel || "");
       updateTreeHighlight(scroll !== false);
+    }
+    // v1.2.2: 树行点击 —— 多选关 → 进入该文件夹; 多选开(或 Shift) → 勾选该文件夹(与文件选中互斥)
+    function pickFolder(rel, ev) {
+      const shift = !!(ev && ev.shiftKey);
+      if (shift && !multi) { multi = true; setMultiBtns(); statusMsg(t("多选模式: 点击切换选中, Shift+点击连选一段")); }
+      if (!multi) { goToFolder(rel); return; }
+      if (selected.size) { selected.clear(); selAnchor = null; updateBatchBtn(); }  // 互斥
+      if (shift && folAnchor) {
+        const i0 = flatTree.findIndex((n) => n.rel === folAnchor);
+        const i1 = flatTree.findIndex((n) => n.rel === rel);
+        if (i0 >= 0 && i1 >= 0) {
+          const a = Math.min(i0, i1), b = Math.max(i0, i1);
+          for (let i = a; i <= b; i++) selFolders.add(flatTree[i].rel);
+          folAnchor = rel;
+          renderTree(); updateFolderBtns(); updateBatchBtn();
+          statusMsg(t("已选 ") + selFolders.size + t(" 个文件夹"));
+          return;
+        }
+      }
+      if (selFolders.has(rel)) selFolders.delete(rel); else selFolders.add(rel);
+      folAnchor = rel;
+      renderTree();
+      updateFolderBtns();
+      updateBatchBtn();
+      statusMsg(t("已选 ") + selFolders.size + t(" 个文件夹"));
     }
     async function loadFolderTree() {
       try {
@@ -854,6 +909,8 @@ app.registerExtension({
       const shift = !!(ev && ev.shiftKey);
       if (shift && !multi) { multi = true; setMultiBtns(); statusMsg(t("多选模式: 点击切换选中, Shift+点击连选一段")); }
       if (!multi) return;
+      // v1.2.2: 互斥 —— 选文件即清空文件夹选中
+      if (selFolders.size) { selFolders.clear(); folAnchor = null; renderTree(); }
       const order = filterFolderFiles().map((f) => f.rel);   // Shift 连选按「当前显示顺序」
       if (shift && selAnchor) {
         const i0 = order.indexOf(selAnchor), i1 = order.indexOf(rel);
@@ -929,27 +986,50 @@ app.registerExtension({
         } else statusMsg(t("改名失败: ") + (terr(d.error) || ""));
       } catch (e) { statusMsg(t("改名失败: ") + (e && e.message ? e.message : e)); }
     }
-    // 删除作用于「当前文件夹」(根目录提示并中止); 成功后回到父目录
+    // v1.2.2: 有文件夹选中 → 删这些文件夹(逐个走「先报文件数→二次确认→recursive」);
+    //          没有文件夹选中 → 删当前文件夹(v1.2.1 行为)。根目录永不可删。
     async function deleteFolder() {
-      if (!folderPath) { statusMsg(t("（根目录不能删除）")); return; }
-      const nm = dirNameOf(folderPath);
-      const up = parentOf(folderPath);
-      const ask = LANG === "zh" ? ("确定删除文件夹「" + nm + "」吗？") : ("Delete folder \"" + nm + "\"?");
+      const targets = selFolders.size ? [...selFolders].filter((r) => r !== "") : (folderPath ? [folderPath] : []);
+      if (!targets.length) { statusMsg(t("（根目录不能删除）")); return; }
+      const ask = targets.length === 1
+        ? (LANG === "zh" ? ("确定删除文件夹「" + dirNameOf(targets[0]) + "」吗？") : ("Delete folder \"" + dirNameOf(targets[0]) + "\"?"))
+        : (LANG === "zh" ? ("确定删除选中的 " + targets.length + " 个文件夹吗？") : ("Delete the " + targets.length + " selected folder(s)?"));
       if (!confirm(ask)) return;
       try {
-        let d = await postJSON("./asset/delete_output_dir", { path: folderPath, recursive: false });
-        if (!d.ok && d.error === "Folder is not empty") {
-          const n = typeof d.files === "number" ? d.files : 0;
-          const more = LANG === "zh" ? ("该文件夹里有 " + n + " 个文件, 连带一起删除？") : ("This folder contains " + n + " files. Delete them as well?");
-          if (!confirm(more)) return;
-          d = await postJSON("./asset/delete_output_dir", { path: folderPath, recursive: true });
+        // 先非递归探测: 空文件夹会被直接删掉, 非空的收进 blocked 等二次确认
+        const blocked = [];
+        let deleted = 0;
+        for (const rel of targets) {
+          const d = await postJSON("./asset/delete_output_dir", { path: rel, recursive: false });
+          if (d.ok) { deleted++; continue; }
+          if (d.error === "Folder is not empty") blocked.push({ rel, files: typeof d.files === "number" ? d.files : 0 });
+          else statusMsg(t("删除失败: ") + (terr(d.error) || ""));
         }
-        if (d.ok) {
-          statusMsg(LANG === "zh" ? ("已删除文件夹: " + nm) : ("Folder deleted: " + nm));
-          await loadRuns();
-          await loadFolderTree();
-          goToFolder(up);
-        } else statusMsg(t("删除失败: ") + (terr(d.error) || ""));
+        if (blocked.length) {
+          const totalFiles = blocked.reduce((s, x) => s + x.files, 0);
+          const list = blocked.map((x) => "• " + dirNameOf(x.rel) + " (" + x.files + ")").join("\n");
+          const more = LANG === "zh"
+            ? ("以下文件夹不为空, 共 " + totalFiles + " 个文件, 连带一起删除？\n\n" + list)
+            : ("These folders are not empty (" + totalFiles + " files in total). Delete the files as well?\n\n" + list);
+          if (!confirm(more)) {
+            statusMsg(LANG === "zh" ? ("已删除 " + deleted + " 个空文件夹，其余已取消") : ("Deleted " + deleted + " empty folder(s); the rest was cancelled"));
+            await loadRuns();
+            await reloadFolderView();
+            return;
+          }
+          for (const x of blocked) {
+            const d = await postJSON("./asset/delete_output_dir", { path: x.rel, recursive: true });
+            if (d.ok) deleted++;
+            else statusMsg(t("删除失败: ") + (terr(d.error) || ""));
+          }
+        }
+        selFolders.clear();
+        folAnchor = null;
+        statusMsg(LANG === "zh" ? ("已删除 " + deleted + " 个文件夹") : ("Deleted " + deleted + " folder(s)"));
+        await loadRuns();
+        const wasCurrent = targets.indexOf(folderPath) >= 0;
+        if (wasCurrent) goToFolder(parentOf(folderPath));
+        else await reloadFolderView();
       } catch (e) { statusMsg(t("删除失败: ") + (e && e.message ? e.message : e)); }
     }
     function cutSelected() {
@@ -984,16 +1064,23 @@ app.registerExtension({
       } catch (e) { statusMsg(t("移动失败: ") + (e && e.message ? e.message : e)); }
     }
     function openOutputFile(f) {
-      reportOpen("out:" + f.rel);
-      openOutputPreview(f);
+      // v1.2.2: 传入当前显示列表 → 文件夹视图里也能 ←/→ 翻页(与网格/日历一致)
+      openOutputPreview(f, filterFolderFiles());
     }
+    // v1.2.2: 按钮启用规则 —— 剪切/粘贴仅「文件」类型; 下载任一类型; 删除看文件夹选中或当前文件夹
     function updateFolderBtns() {
-      const n = selected.size;
-      fCutBtn.textContent = t("剪切") + (n ? "(" + n + ")" : "");
-      fCutBtn.disabled = n === 0;
+      const nf = selected.size, nd = selFolders.size;
+      fCutBtn.textContent = t("剪切") + (nf ? "(" + nf + ")" : "");
+      fCutBtn.disabled = nf === 0;
       const c = (clipboard && clipboard.items) ? clipboard.items.length : 0;
       fPasteBtn.textContent = t("粘贴") + (c ? "(" + c + ")" : "");
       fPasteBtn.disabled = c === 0;
+      const dl = nd || nf;
+      fDlBtn.textContent = t("下载") + (dl ? "(" + dl + ")" : "");
+      fDlBtn.disabled = dl === 0;
+      fRenBtn.disabled = !folderPath;
+      fDelBtn.textContent = t("删除") + (nd ? "(" + nd + ")" : "");
+      fDelBtn.disabled = !nd && !folderPath;
     }
     // ↑/↓ 键盘导航: 作用域严格限定, 其余情况一律不拦截(不抢 ComfyUI 画布按键)
     function onFolderKey(e) {
@@ -1011,6 +1098,8 @@ app.registerExtension({
     document.addEventListener("keydown", onFolderKey, true);
 
     function refresh() {
+      // v1.2.2: 文件夹/日历视图下 body 不滚, 左右两栏各自独立滚动; 网格视图保持整页滚动
+      body.classList.toggle("asm-noscroll", view !== "grid");
       if (view === "grid") { gridEl.style.display = ""; calWrap.style.display = "none"; folderWrap.style.display = "none"; renderGrid(); }
       else if (view === "cal") { gridEl.style.display = "none"; calWrap.style.display = ""; folderWrap.style.display = "none"; renderCal(); }
       else {
@@ -1043,7 +1132,10 @@ app.registerExtension({
       setMultiBtns();
       selected.clear();
       selAnchor = null;
+      selFolders.clear();
+      folAnchor = null;
       updateBatchBtn();
+      updateFolderBtns();
       refresh();
       statusMsg(multi ? t("多选模式: 点击切换选中, Shift+点击连选一段") : t("已退出多选"));
     }
@@ -1163,24 +1255,61 @@ app.registerExtension({
       show(idx);
     }
 
-    // 文件夹视图里预览 output 文件(单张, 无翻页); Esc / 点遮罩关闭
-    function openOutputPreview(f) {
+    // 文件夹视图里预览 output 文件; v1.2.2: 与网格/日历一致, ←/→ 翻页(循环 / n 总数 / 预加载)
+    function openOutputPreview(f, listArg) {
+      const list = (Array.isArray(listArg) && listArg.length ? listArg : filterFolderFiles()).slice();
+      let idx = list.findIndex((x) => x.rel === f.rel);
+      if (idx < 0) { list.unshift(f); idx = 0; }
       if (pv) closePreview();
+
       const m = $el("div.asm-modal");
       m.style.display = "flex";
       const mediaBox = $el("div.media");
-      if (f.kind === "video") mediaBox.appendChild($el("video", { src: outUrl(f.rel), controls: true, autoplay: true, muted: true, playsinline: true }));
-      else if (f.kind === "image") mediaBox.appendChild($el("img", { src: outUrl(f.rel) }));
-      else mediaBox.appendChild($el("div", { textContent: t("该文件无法预览") }));
-      const rowsEl = $el("div.rows", {}, [
-        labeledRow([{ zh: "文件名: ", text: f.name }]),
-        labeledRow([{ zh: "时间: ", text: (f.created || "") + " | " + (f.mtime || "") }]),
-        labeledRow([{ zh: "大小: ", text: fmtSize(f.size) }]),
-        labeledRow([{ zh: "路径: ", text: f.rel }]),
-      ]);
+      const rowsEl = $el("div.rows");
+      const pagerEl = $el("div.pvbar");
+      const prevBtn = $el("button.nav.prev", { textContent: "‹" });
+      const nextBtn = $el("button.nav.next", { textContent: "›" });
+      prevBtn.title = t("上一张 (←)");
+      nextBtn.title = t("下一张 (→)");
+      prevBtn.onclick = () => step(-1);
+      nextBtn.onclick = () => step(1);
+
+      function mediaFor(x) {
+        if (x.kind === "video") return $el("video", { src: outUrl(x.rel), controls: true, autoplay: true, muted: true, playsinline: true });
+        if (x.kind === "image") return $el("img", { src: outUrl(x.rel) });
+        return $el("div", { textContent: t("该文件无法预览") });
+      }
+      function preload(i) {
+        for (const k of [i - 1, i + 1]) {
+          const x = list[(k + list.length) % list.length];
+          if (x && x.kind === "image") { try { const im = new Image(); im.src = outUrl(x.rel); } catch (e) {} }
+        }
+      }
+      function show(i) {
+        idx = ((i % list.length) + list.length) % list.length;
+        const cur = list[idx];
+        mediaBox.innerHTML = "";
+        mediaBox.appendChild(mediaFor(cur));
+        rowsEl.innerHTML = "";
+        rowsEl.appendChild(labeledRow([{ zh: "文件名: ", text: cur.name }]));
+        rowsEl.appendChild(labeledRow([{ zh: "时间: ", text: (cur.created || "") + " | " + (cur.mtime || "") }]));
+        rowsEl.appendChild(labeledRow([{ zh: "大小: ", text: fmtSize(cur.size) }]));
+        rowsEl.appendChild(labeledRow([{ zh: "路径: ", text: cur.rel }]));
+        pagerEl.textContent = (idx + 1) + " / " + list.length;
+        const solo = list.length < 2;
+        prevBtn.style.display = solo ? "none" : "";
+        nextBtn.style.display = solo ? "none" : "";
+        pagerEl.style.display = solo ? "none" : "";
+        preload(idx);
+        reportOpen("out:" + cur.rel); // 翻页也上报打开时间
+      }
+      function step(d) { if (list.length > 1) show(idx + d); }
+
+      const mediaWrap = $el("div.mediaWrap", {}, [mediaBox, prevBtn, nextBtn]);
       const pn = $el("div.pn", {}, [
         $el("button.x", { textContent: "✕", onclick: () => closePreview() }),
-        $el("div.mediaWrap", {}, [mediaBox]),
+        pagerEl,
+        mediaWrap,
         rowsEl,
         $el("div.btns", {}, [
           bindText($el("button.asm-btn", { onclick: () => closePreview() }), "关闭"),
@@ -1189,7 +1318,8 @@ app.registerExtension({
       m.appendChild($el("div.bk", { onclick: () => closePreview() }));
       m.appendChild(pn);
       document.body.appendChild(m);
-      pv = { m, step: function () {} };
+      pv = { m, step };
+      show(idx);
     }
 
     // 预览打开时: ←/→ 翻页, Esc 关闭(文本域内方向键仍用于移光标)
@@ -1620,14 +1750,72 @@ app.registerExtension({
         } catch (e) { /* 用户取消/浏览器不允许 → 下面回退为单个 ZIP */ }
       }
       const gathered = await gatherEntries(list);
-      const entries = gathered.entries;
-      const failed = gathered.failed;
+      await saveEntries(gathered.entries, gathered.failed);
+    }
+    // v1.2.2: 「下载选中」(文件夹视图) —— 文件夹递归取清单, 文件直接取; 两者共用下面的保存管线
+    async function downloadOutputSelection() {
+      const rels = [];
+      for (const rel of selected) rels.push({ rel: rel, name: dirNameOf(rel), subdir: "" });
+      const failed = [];
+      if (selFolders.size) {
+        statusMsg(t("正在读取文件夹清单…"));
+        for (const rel of selFolders) {
+          let d = null;
+          try { d = await (await fetch("./asset/output_files?path=" + encodeURIComponent(rel))).json(); } catch (e) {}
+          if (!d || !d.ok) { failed.push((rel || t("根")) + "（" + terr((d && d.error) || "Directory not found") + "）"); continue; }
+          if (d.truncated) {
+            statusMsg(t("文件夹文件过多，已中止下载") + ": " + (rel || t("根")) +
+              (LANG === "zh" ? ("（超过 5000 个文件，请分批或改用网格视图下载）") : (" (>5000 files; split it or use the grid view)")));
+            return;
+          }
+          for (const f of d.files) rels.push({ rel: f.rel, name: f.name, subdir: rel });
+        }
+      }
+      if (!rels.length) { statusMsg(t("没有选中要下载的内容")); return; }
+      const cfg = curConfig && curConfig.config;
+      let zipMode = !!(cfg && cfg.download_mode === "zip");
+      if (!zipMode && rels.length > 1 && !(dlDirHandle && dlDirHandle.getFileHandle)) {
+        if (!dlDirHandle) { try { await loadDlHandle(); } catch (e) {} }
+      }
+      if (!zipMode && rels.length > 1 && !(dlDirHandle && dlDirHandle.getFileHandle) && window.showDirectoryPicker) {
+        try {
+          const h = await window.showDirectoryPicker({ mode: "readwrite" });
+          if (h) { dlDirHandle = h; try { await idbSet("dir", h); } catch (e) {} }
+        } catch (e) { /* 回退 ZIP */ }
+      }
+      const keepFolders = !!(cfg && cfg.download_keep_folders === true);
+      const entries = [];
+      const used = new Set();
+      statusMsg(t("正在下载 N 个文件").replace("N", String(rels.length)) + (LANG === "zh" ? "…" : "…"));
+      for (const it of rels) {
+        try {
+          const res = await fetch("./asset/output_file?p=" + encodeURIComponent(it.rel), { cache: "no-store" });
+          if (res.status === 404) { failed.push(it.rel + "  (404)"); continue; }
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          const bytes = new Uint8Array(await res.arrayBuffer());
+          const subdir = keepFolders ? (it.subdir || "") : "";
+          let nm = safeName(it.name), dup = 1;
+          const keyOf = (n) => (subdir ? subdir + "/" : "") + n;
+          while (used.has(keyOf(nm))) { nm = safeName(it.name).replace(/(\.\w+)?$/, "_" + (dup++) + "$1"); }
+          used.add(keyOf(nm));
+          entries.push({ path: nm, bytes: bytes, subdir: subdir });
+        } catch (e) {
+          failed.push(it.rel + "  （" + (e && e.message ? e.message : e) + "）");
+        }
+      }
+      if (!entries.length) { statusMsg(t("没有选中要下载的内容")); return; }
+      await saveEntries(entries, failed);
+    }
+    // 把 entries 落到本地(ZIP 或逐个保存) —— downloadRuns 与 downloadOutputSelection 共用
+    async function saveEntries(entries, failed) {
+      failed = failed || [];
       if (!entries.length) { statusMsg(t("该资产下载失败")); return; }
       if (failed.length) {
         entries.push({ path: "_download_errors.txt", bytes: new TextEncoder().encode("以下文件未能下载，未包含在内：\n\n" + failed.join("\n") + "\n") });
       }
       // 浏览器会拦截"连续多次自动下载"（只放行第一个），没授权本地目录时裸模式必然丢文件 → 强制单包 ZIP
       const canWriteDir = !!(dlDirHandle && dlDirHandle.getFileHandle);
+      let zipMode = !!(curConfig && curConfig.config && curConfig.config.download_mode === "zip");
       let forcedZip = false;
       if (!zipMode && !canWriteDir) { zipMode = true; forcedZip = true; }
       const fileCount = entries.length - (failed.length ? 1 : 0);

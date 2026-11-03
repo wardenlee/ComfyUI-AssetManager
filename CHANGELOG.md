@@ -5,6 +5,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 > 本文件记录 **ComfyUI-AssetManager** 的所有重要改动，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.2.2] - 2026-11-03
+
+### Changed · 改动
+
+- **Independent scrolling · 滚动独立** — in the folder and calendar views the left panel and the right image area now scroll **independently**; the tree / calendar no longer drags the images along with it.<br>
+  **滚动独立** —— 文件夹视图与日历视图里，左栏与右侧图片区**各自独立滚动**；翻树 / 看日历不再把图片一起带走。
+- **Folder view polish · 文件夹视图细节** — the `output 根` caption at the top of the left panel is gone, and a `根` (Root) row now sits at the top of the folder tree; long folder names **wrap** instead of being cut off with an ellipsis.<br>
+  去掉左栏顶部的 `output 根` 说明，改在文件夹树顶加一行 `根`；文件夹名过长**自动换行**，不再用省略号截断。
+- **Folder preview paging · 文件夹视图翻页** — previewing an image in the folder view now supports `←` / `→` paging (wraps around, shows `n / total`, preloads neighbours), matching the grid and calendar views.<br>
+  在文件夹视图里预览图片现在支持 `←` / `→` 翻页（循环、`n / 总数`、相邻预加载），与网格 / 日历视图一致。
+- **Folder multi-select with visible ticks · 多选文件夹且勾选可见** — one multi-select mode whose selection type is **mutually exclusive** (files vs folders), with a visible `✓` on tree rows. `剪切` / `粘贴` are file-only, `下载` works for either type, and `删除` removes the ticked folders (one combined confirmation listing each file count) or the current folder when nothing is ticked.<br>
+  **多选文件夹且勾选可见** —— 一套多选模式，文件与文件夹选中**互斥**，树行显示可见的 `✓`；`剪切` / `粘贴` 只对文件，`下载` 两者都行，`删除` 删掉勾选的文件夹（一次性确认框列出各自文件数），没勾选时删当前文件夹。
+- **Download whole folders · 下载整个文件夹** — tick folders and press `下载` to save everything inside them, **sub-folders included**. New route `GET /asset/output_files` returns the recursive file list in a single request; the download is capped at 5000 files and stops with a message above that, instead of silently dropping files.<br>
+  **下载整个文件夹** —— 勾选文件夹后点 `下载`，会把里面的东西**连子目录**一起存下来。新增路由 `GET /asset/output_files`，一次请求返回递归文件清单；上限 5000 个文件，超过则提示并中止，不会静默少下。
+
 ## [1.2.1] - 2026-11-03
 
 ### Changed · 改动
@@ -66,5 +81,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Preview navigation with `←` / `→` inside the large-image dialog.<br>
   大图预览内用 `←` / `→` 翻页。
 
-[1.2.1]: https://github.com/wardenlee/ComfyUI-AssetManager/compare/29a9c05...HEAD
+[1.2.2]: https://github.com/wardenlee/ComfyUI-AssetManager/compare/d06d239...HEAD
+[1.2.1]: https://github.com/wardenlee/ComfyUI-AssetManager/compare/29a9c05...d06d239
 [1.2.0]: https://github.com/wardenlee/ComfyUI-AssetManager/compare/74dcc0a...29a9c05
