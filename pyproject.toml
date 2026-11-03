@@ -1,11 +1,11 @@
 [project]
 name = "comfyui-asset-manager"
-description = "ComfyUI asset manager: auto-archives generated images/videos with prompts, params, models and workflows; grid & calendar browsing, search, batch delete, one-click backup, output directory switching."
-version = "1.1.1"
+description = "ComfyUI asset manager: auto-archives generated images/videos with prompts, params, models and workflows; grid, calendar & folder browsing, folder create/rename/delete, cut-and-paste asset moving with archive relinking, unified sorting by created/last-opened time and name, search, batch delete, one-click backup, output directory switching."
+version = "1.2.0"
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [{ name = "Wumihaze", email = "317549200+wumihaze@users.noreply.github.com" }]
-keywords = ["comfyui", "asset-manager", "gallery", "archive", "backup"]
+keywords = ["comfyui", "asset-manager", "gallery", "archive", "folder", "sort", "backup"]
 requires-python = ">=3.9"
 dependencies = ["Pillow>=9.0"]
 

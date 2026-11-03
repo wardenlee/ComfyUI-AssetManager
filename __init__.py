@@ -20,7 +20,7 @@ WEB_DIRECTORY = "web"
 NODE_CLASS_MAPPINGS = {}
 NODE_DISPLAY_NAME_MAPPINGS = {}
 
-__version__ = "1.1.1"
+__version__ = "1.2.0"
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _cfg = assets_core.load_config(BASE_DIR)
@@ -76,10 +76,132 @@ from server import PromptServer  # noqa: E402
 from aiohttp import web  # noqa: E402
 
 
+async def _json_body(request):
+    """读取 JSON 请求体; 失败/非 dict 一律返回 {}"""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        return {}
+    return body
+
+
 @PromptServer.instance.routes.get("/asset/list")
 async def asset_list(request):
-    runs = await asyncio.to_thread(assets_core.list_runs, _arch)
+    def _go():
+        return assets_core.list_runs(_arch, assets_core.load_open_state(_arch))
+
+    runs = await asyncio.to_thread(_go)
     return web.json_response({"ok": True, "count": len(runs), "runs": runs})
+
+
+# --- 输出目录: 文件夹视图 / 文件夹管理 / 剪切粘贴 (v1.2.0) --------------------
+
+@PromptServer.instance.routes.get("/asset/list_output")
+async def asset_list_output(request):
+    path = request.rel_url.query.get("path", "")
+
+    def _go():
+        return assets_core.list_output(_current_output_dir(), path, _arch,
+                                       assets_core.load_open_state(_arch))
+
+    try:
+        result = await asyncio.to_thread(_go)
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)})
+    return web.json_response(result)
+
+
+@PromptServer.instance.routes.post("/asset/mkdir_output")
+async def asset_mkdir_output(request):
+    body = await _json_body(request)
+
+    def _go():
+        with _LOCK:
+            return assets_core.mkdir_output(_current_output_dir(),
+                                            body.get("path", ""), body.get("name", ""))
+
+    try:
+        result = await asyncio.to_thread(_go)
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)})
+    return web.json_response(result)
+
+
+@PromptServer.instance.routes.post("/asset/rename_output")
+async def asset_rename_output(request):
+    body = await _json_body(request)
+
+    def _go():
+        with _LOCK:
+            return assets_core.rename_output(_current_output_dir(),
+                                             body.get("path", ""), body.get("name", ""),
+                                             _arch, _state)
+
+    try:
+        result = await asyncio.to_thread(_go)
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)})
+    return web.json_response(result)
+
+
+@PromptServer.instance.routes.post("/asset/delete_output_dir")
+async def asset_delete_output_dir(request):
+    body = await _json_body(request)
+
+    def _go():
+        with _LOCK:
+            return assets_core.delete_output_dir(_current_output_dir(),
+                                                 body.get("path", ""),
+                                                 bool(body.get("recursive", False)))
+
+    try:
+        result = await asyncio.to_thread(_go)
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)})
+    return web.json_response(result)
+
+
+@PromptServer.instance.routes.post("/asset/move_output")
+async def asset_move_output(request):
+    body = await _json_body(request)
+    rels = body.get("from") or []
+    dest = body.get("to") or ""
+
+    def _go():
+        with _LOCK:
+            return assets_core.move_output(_current_output_dir(), rels, dest, _arch, _state)
+
+    try:
+        result = await asyncio.to_thread(_go)
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)})
+    return web.json_response(result)
+
+
+@PromptServer.instance.routes.get("/asset/output_file")
+async def asset_output_file(request):
+    rel = request.rel_url.query.get("p", "")
+    p = assets_core.safe_output_path(_current_output_dir(), rel)
+    if not p:
+        return web.Response(status=404, text="not found")
+    return web.FileResponse(p)
+
+
+@PromptServer.instance.routes.post("/asset/touch_open")
+async def asset_touch_open(request):
+    body = await _json_body(request)
+
+    def _go():
+        with _LOCK:
+            return assets_core.touch_open(_arch, body.get("key"))
+
+    try:
+        result = await asyncio.to_thread(_go)
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)})
+    return web.json_response(result)
 
 
 @PromptServer.instance.routes.get("/asset/config")

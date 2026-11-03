@@ -1,0 +1,54 @@
+# Changelog
+
+All notable changes to **ComfyUI-AssetManager** are documented here.
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+> 本文件记录 **ComfyUI-AssetManager** 的所有重要改动，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与[语义化版本](https://semver.org/lang/zh-CN/)。
+
+## [1.2.0] - 2026-11-03
+
+### Added · 新增
+
+- **Folder view · 文件夹视图** — a third view alongside grid and calendar that browses the ComfyUI output directory as a folder tree, laid out as a folder list on the left and an asset grid on the right (same idea as [ComfyUI-Load-Image-Media-Browser](https://github.com/wardenlee/ComfyUI-Load-Image-Media-Browser)). It lists sub-folders with an asset count and files with thumbnails (archive thumbnails are reused when the asset is archived), plus breadcrumbs and an *Up* button for navigation.<br>
+  在网格、日历之外新增第三个视图，把 ComfyUI 输出目录当文件夹树浏览，左栏文件夹列表 + 右栏资产网格（思路同 [ComfyUI-Load-Image-Media-Browser](https://github.com/wardenlee/ComfyUI-Load-Image-Media-Browser)）。子文件夹带资产数量，文件带缩略图（已归档的复用归档缩略图），并提供面包屑与「上级」导航。
+- **Folder management · 文件夹管理** — create, rename and delete folders at any level of the output directory. Empty folders are removed right away; deleting a non-empty folder is a two-step confirmation that first reports how many files are inside. Names are validated, and the output root can neither be renamed nor deleted.<br>
+  可在输出目录任意层级**新建 / 改名 / 删除**文件夹。空文件夹直接删；删非空文件夹走两步确认，先告诉你里面有几个文件。名字会做合法性校验，输出根目录既不能改名也不能删除。
+- **Cut & paste to move assets · 剪切粘贴搬资产** — multi-select assets in the folder view, press `✂ Cut`, enter the target folder and press `📋 Paste`. The move is **whole-entry**: the file on disk is moved, the archive entry's recorded source path is rewritten, and the archive state key is migrated. As a result the asset keeps its prompt / params / models / workflow / thumbnail after the move, deleting it still removes both the archive copy and the original file, and the moved file is **not archived a second time**. Name collisions in the destination are resolved with an `_1`, `_2`… suffix instead of overwriting.<br>
+  文件夹视图里多选资产 → `✂ 剪切` → 进入目标文件夹 → `📋 粘贴`。搬移是**整条目**的：磁盘文件搬走、归档条目记录的来源路径改写、归档状态键迁移。因此搬完后提示词/参数/模型/工作流/缩略图依然挂着，删除时归档副本与原始文件仍会一起删掉，并且**不会被当成新产物重复归档**。目标里同名冲突自动加 `_1`、`_2`… 后缀，不覆盖任何文件。
+
+- **Renaming keeps everything attached · 改名同样不脱链** — renaming a folder relinks **every** asset inside it, recursively (its archive entry's source path *and* the archive state key), so a renamed folder never gets re-archived and its thumbnails stay attached. The recorded "last opened" time follows moves and renames too, so sorting by it stays correct.<br>
+  文件夹改名会把里面**每一个**资产（递归含子目录）的归档链接一起改写（归档条目的来源路径**与**归档状态键），所以改过名的文件夹不会被重复归档、缩略图也不会掉。记录的「打开时间」同样跟着搬移与改名一起迁移，按它排序依然正确。
+
+### Changed · 改动
+
+- **Unified sorting · 统一排序** — a single Sort dropdown in the toolbar now applies to the folder list, the folder view grid, the grid view and the calendar day list. Options: created time ↓/↑, last-opened time ↓/↑, name A→Z / Z→A; **the default is newest created first**. Items with no timestamp always sort last. The choice is remembered in the browser.<br>
+  工具栏新增一个共用的「排序」下拉，同时作用于文件夹列表、文件夹视图网格、网格视图与日历当天列表。选项：新建时间 ↓/↑、打开时间 ↓/↑、名称 A→Z / Z→A，**默认最近新建在前**；没有时间戳的项一律排在最后；选择会被浏览器记住。
+- **"Last opened" is tracked by the plugin · 「打开时间」由插件记录** — opening an asset in the preview (or entering a folder) records that moment in `open_state.json` inside the archive directory, so "last-opened" sorting reflects how *you* actually use the library instead of the OS access time (which Windows usually does not maintain).<br>
+  在预览里打开资产（或进入某个文件夹）时，插件把这一刻记到归档目录下的 `open_state.json`，所以「打开时间」反映的是**你**实际的使用顺序，而不是操作系统访问时间（Windows 通常不维护它）。
+- Asset listings now also expose `source_rel`, `created`, `mtime` and `opened`, and newly archived assets record their creation time and source modification time.<br>
+  资产列表新增 `source_rel` / `created` / `mtime` / `opened` 字段；新归档的资产会记录创建时间与来源文件的修改时间。
+
+### Notes · 说明
+
+- Archiving is still a copy; the folder view only ever touches files **inside the configured output directory** (every path is normalised and prefix-checked, so `..` and absolute paths are rejected).<br>
+  归档依然是复制；文件夹视图只会动**配置的输出目录之内**的文件（所有路径都做规范化与前缀校验，`..` 与绝对路径一律拒绝）。
+- No new configuration keys, no new dependencies, no build step.<br>
+  没有新增配置项、没有新增依赖、没有构建步骤。
+
+## [1.1.1] - 2026-10-31
+
+### Fixed · 修复
+
+- Downloads never include thumbnails, even with `download_include_metadata` enabled.<br>
+  即使打开了 `download_include_metadata`，下载也绝不再包含缩略图。
+
+## [1.1.0]
+
+### Added · 新增
+
+- Clean downloads (assets only, flattened by default) with two settings to bring metadata and per-asset folders back.<br>
+  干净下载（默认只下资产本体并平铺），两个开关可恢复元数据与每资产文件夹。
+- Preview navigation with `←` / `→` inside the large-image dialog.<br>
+  大图预览内用 `←` / `→` 翻页。
+
+[1.2.0]: https://github.com/wardenlee/ComfyUI-AssetManager/compare/74dcc0a...HEAD
