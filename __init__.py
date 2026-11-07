@@ -20,7 +20,7 @@ WEB_DIRECTORY = "web"
 NODE_CLASS_MAPPINGS = {}
 NODE_DISPLAY_NAME_MAPPINGS = {}
 
-__version__ = "1.2.4"
+__version__ = "1.2.5"
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _cfg = assets_core.load_config(BASE_DIR)
@@ -87,10 +87,41 @@ async def _json_body(request):
     return body
 
 
+# --- v1.2.5: 归档 / 备份目录不得出现在任何"资产"视图里 ---------------------------
+def _exclude_dirs():
+    """需要整体隐藏的目录(绝对路径): 归档库 + 备份目录"""
+    dirs = [os.path.abspath(_arch)]
+    bak = (_cfg.get("backup_dir") or "").strip()
+    if bak:
+        dirs.append(os.path.abspath(bak))
+    return dirs
+
+
+def _skip_source_prefixes():
+    """归档/备份目录相对 output 的 POSIX 前缀(仅当其落在 output 内), 供 list_runs 过滤自噬条目"""
+    out = _current_output_dir()
+    if not out:
+        return []
+    out_abs = os.path.abspath(out)
+    res = []
+    for p in _exclude_dirs():
+        try:
+            rel = os.path.relpath(p, out_abs)
+        except ValueError:
+            continue
+        if rel.startswith(".."):
+            continue
+        rel = rel.replace(os.sep, "/").strip("/")
+        if rel:
+            res.append(rel)
+    return res
+
+
 @PromptServer.instance.routes.get("/asset/list")
 async def asset_list(request):
     def _go():
-        return assets_core.list_runs(_arch, assets_core.load_open_state(_arch))
+        return assets_core.list_runs(_arch, assets_core.load_open_state(_arch),
+                                     _skip_source_prefixes())
 
     runs = await asyncio.to_thread(_go)
     return web.json_response({"ok": True, "count": len(runs), "runs": runs})
@@ -104,7 +135,8 @@ async def asset_list_output(request):
 
     def _go():
         return assets_core.list_output(_current_output_dir(), path, _arch,
-                                       assets_core.load_open_state(_arch))
+                                       assets_core.load_open_state(_arch),
+                                       _exclude_dirs())
 
     try:
         result = await asyncio.to_thread(_go)
@@ -119,7 +151,8 @@ async def asset_folder_tree(request):
 
     def _go():
         return assets_core.folder_tree(_current_output_dir(),
-                                       assets_core.load_open_state(_arch))
+                                       assets_core.load_open_state(_arch),
+                                       exclude_dirs=_exclude_dirs())
 
     try:
         result = await asyncio.to_thread(_go)
@@ -134,7 +167,8 @@ async def asset_output_files(request):
     path = request.rel_url.query.get("path", "")
 
     def _go():
-        return assets_core.list_output_files(_current_output_dir(), path)
+        return assets_core.list_output_files(_current_output_dir(), path,
+                                             exclude_dirs=_exclude_dirs())
 
     try:
         result = await asyncio.to_thread(_go)

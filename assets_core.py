@@ -8,6 +8,7 @@ ComfyUI 资产管理插件核心库
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -25,6 +26,17 @@ IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 VIDEO_EXT = {".mp4", ".webm", ".mov", ".mkv", ".gif"}
 ALL_EXT = IMAGE_EXT | VIDEO_EXT
 NEG_HINTS = ("negative", "neg prompt", "neg", "负")
+
+# ---------------------------------------------------------------------------
+# v1.2.5: 插件自身产物识别
+# 归档目录里每个条目都会带 thumb.jpg / info.json / prompt.txt / workflow.json;
+# 这些是"给界面用的元数据与预览图", **不是用户产物**, 任何视图都不该当成资产列出、
+# 也不该被再次归档(否则 archive 落在 output 内时会自己归档自己, 越滚越多)。
+# ---------------------------------------------------------------------------
+THUMB_NAME_RE = re.compile(r"^thumb\.(?:jpe?g|png|webp|gif|bmp)$", re.IGNORECASE)
+BACKUP_ZIP_RE = re.compile(r"^comfyui_asset_backup_\d{8}_\d{6}\.zip$", re.IGNORECASE)
+RUN_ARTIFACT_NAMES = {"info.json", "prompt.txt", "workflow.json"}
+STATE_ARTIFACT_NAMES = {"archive_state.json", "open_state.json"}
 
 DEFAULT_CONFIG = {
     "output_dir": "",   # 空 = 使用 ComfyUI 默认 output
@@ -415,14 +427,28 @@ def scan_all(output_dir, archive_dir, state, cfg):
     out = Path(output_dir)
     if not out.is_dir():
         return 0
+    # v1.2.5: 归档 / 备份目录若落在 output 内, 必须整体跳过 —— 否则会"自己归档自己",
+    # 每扫描一轮就在库里多出一批 thumb.jpg / 媒体副本的假条目(实测一次 +6 条并连锁)。
+    hidden = hidden_roots(output_dir, [archive_dir, (cfg or {}).get("backup_dir")])
+    # 归档目录**就是** output 本身: 一旦扫描就会自己归档自己(无限膨胀) → 直接不扫
+    try:
+        if archive_dir:
+            root_abs = Path(output_dir).resolve()
+            if Path(archive_dir).resolve() == root_abs:
+                return 0
+    except Exception:
+        pass
     new_runs = []
     state_changed = False
     archive_existing = bool(cfg.get("archive_existing", False))
     baseline_done = bool(state.get("__baseline_done__", False))
     for root, dirs, files in os.walk(out):
-        dirs[:] = [d for d in dirs if not d.startswith(".")]
+        dirs[:] = [d for d in dirs
+                   if not d.startswith(".") and not _is_hidden(Path(root) / d, hidden)]
         for fn in files:
             if fn.startswith("."):
+                continue
+            if is_artifact_name(fn):
                 continue
             if Path(fn).suffix.lower() not in ALL_EXT:
                 continue
@@ -477,13 +503,42 @@ def scan_all(output_dir, archive_dir, state, cfg):
 # 索引 / 列表
 # ---------------------------------------------------------------------------
 
-def list_runs(archive_dir, open_state=None):
+def _is_bogus_run(src_rel, media, prefixes):
+    """v1.2.5: 判断归档条目是否"插件自己的产物被误当资产"(历史遗留数据)
+
+    - media 是缩略图/元数据这类插件产物名 -> 假条目(旧版扫描曾把 thumb.jpg 归档成一张图)
+    - source_rel 的文件名本身是插件产物      -> 假条目
+    - source_rel 落在归档/备份目录内(prefixes) -> 假条目(自己归档自己)
+    """
+    if is_artifact_name(media):
+        return True
+    src = (src_rel or "").replace("\\", "/").strip()
+    if not src:
+        return False
+    base = src.rsplit("/", 1)[-1]
+    if is_artifact_name(base):
+        return True
+    low = src.lower()
+    for p in (prefixes or []):
+        if p and low.startswith(p.lower()):
+            return True
+    return False
+
+
+def list_runs(archive_dir, open_state=None, skip_source_prefixes=None):
     arch = Path(archive_dir)
     runs = []
     if not arch.is_dir():
         return runs
     if not isinstance(open_state, dict):
         open_state = {}
+    # v1.2.5: 归档/备份目录若在 output 内, 其相对前缀由调用方传入 → 这些 source_rel 的条目是自噬产物
+    prefixes = []
+    for p in (skip_source_prefixes or []):
+        s = str(p or "").replace("\\", "/").strip()
+        s = s.strip("/")
+        if s:
+            prefixes.append(s + "/")
     for date_dir in arch.iterdir():
         if not date_dir.is_dir():
             continue
@@ -494,6 +549,11 @@ def list_runs(archive_dir, open_state=None):
             try:
                 info = json.loads(info_file.read_text(encoding="utf-8"))
             except Exception:
+                continue
+            if not isinstance(info, dict):
+                continue
+            # 只隐藏、不删盘: 历史遗留的假条目不再出现在任何视图里
+            if _is_bogus_run(info.get("source_rel"), info.get("media"), prefixes):
                 continue
             try:
                 files = sorted(p.name for p in run_dir.iterdir() if p.is_file())
@@ -717,6 +777,66 @@ def _output_root(output_dir):
         return None
 
 
+# ---------------------------------------------------------------------------
+# v1.2.5: 插件产物 / 隐藏目录守卫
+# ---------------------------------------------------------------------------
+
+def is_artifact_name(name):
+    """是否是插件自己生成的辅助文件(缩略图 / 元数据 / 状态 / 备份包) —— 不是用户产物"""
+    if not isinstance(name, str):
+        return False
+    n = name.strip()
+    if not n:
+        return False
+    low = n.lower()
+    if low in RUN_ARTIFACT_NAMES or low in STATE_ARTIFACT_NAMES:
+        return True
+    if THUMB_NAME_RE.match(low):
+        return True
+    if BACKUP_ZIP_RE.match(low):
+        return True
+    return False
+
+
+def hidden_roots(output_dir, extra_dirs=None):
+    """output 之内需要整体隐藏的绝对路径(归档库 / 备份目录落在 output 里时)
+
+    返回 set[Path]。**只收 output 的严格子目录** —— 若某个目录恰好等于 output 本身,
+    这里不收(否则整个 output 会被判隐藏, 列表全空、扫描停摆)。
+    "归档目录 == 输出目录"这种极端情况由调用方(scan_all)单独拦。
+    """
+    root = _output_root(output_dir)
+    hidden = set()
+    if root is None:
+        return hidden
+    for d in (extra_dirs or []):
+        if not d:
+            continue
+        try:
+            p = Path(d).resolve()
+        except Exception:
+            continue
+        if p == root:
+            continue
+        if str(p).startswith(str(root) + os.sep):
+            hidden.add(p)
+    return hidden
+
+
+def _is_hidden(path_obj, hidden):
+    """path 是否等于、或位于某个隐藏根之内"""
+    if not hidden:
+        return False
+    try:
+        p = Path(path_obj).resolve()
+    except Exception:
+        return False
+    for h in hidden:
+        if p == h or str(p).startswith(str(h) + os.sep):
+            return True
+    return False
+
+
 def _valid_name(name):
     """文件夹/文件新名字校验: 空 / 纯点 / 含 \\ / : / .. 均非法"""
     if not isinstance(name, str):
@@ -813,11 +933,12 @@ def _iter_files_under(base_path, prefix_old, prefix_new):
     return pairs
 
 
-def list_output(output_dir, rel="", archive_dir=None, open_state=None):
-    """列出 output 下某目录的直接子项(跳过 . 开头项, 不排序)"""
+def list_output(output_dir, rel="", archive_dir=None, open_state=None, exclude_dirs=None):
+    """列出 output 下某目录的直接子项(跳过 . 开头项与插件产物, 不排序)"""
     root = _output_root(output_dir)
     if root is None:
         return {"ok": False, "error": "Directory not found"}
+    hidden = hidden_roots(output_dir, [archive_dir] + list(exclude_dirs or []))
     try:
         rel_n = _norm_rel(rel)
         target = _resolve_in(root, rel_n)
@@ -836,6 +957,9 @@ def list_output(output_dir, rel="", archive_dir=None, open_state=None):
     for e in entries:
         name = e.name
         if name.startswith("."):
+            continue
+        # v1.2.5: 归档 / 备份目录整体不展示
+        if _is_hidden(Path(target) / name, hidden):
             continue
         child_rel = name if not rel_n else rel_n + "/" + name
         try:
@@ -861,6 +985,9 @@ def list_output(output_dir, rel="", archive_dir=None, open_state=None):
             })
             continue
         if not is_file:
+            continue
+        # v1.2.5: 插件产物(thumb.* / info.json / prompt.txt / workflow.json / 备份 zip)不是资产, 不展示
+        if is_artifact_name(name):
             continue
         size, created, mtime = 0, "", ""
         try:
@@ -893,15 +1020,17 @@ def list_output(output_dir, rel="", archive_dir=None, open_state=None):
             "dirs": dirs, "files": files}
 
 
-def folder_tree(output_dir, open_state=None, max_depth=8, max_nodes=2000):
+def folder_tree(output_dir, open_state=None, max_depth=8, max_nodes=2000, exclude_dirs=None):
     """output 目录的完整文件夹树(只含目录), 供左栏一次拉全(v1.2.1 §2.6)
 
     - 一趟递归: 每个目录只 os.scandir 一次, 自底向上累计递归 file_count(无 O(n^2))
     - 跳过以 "." 开头的目录; 超 max_depth / max_nodes -> truncated=True 并停止深入(不报错)
+    - v1.2.5: 归档 / 备份目录(exclude_dirs, 落在 output 内时)整棵不出现, 其内文件也不计数
     """
     root = _output_root(output_dir)
     if root is None or not root.is_dir():
         return {"ok": False, "error": "Directory not found"}
+    hidden = hidden_roots(output_dir, list(exclude_dirs or []))
     if not isinstance(open_state, dict):
         open_state = {}
     try:
@@ -934,10 +1063,15 @@ def folder_tree(output_dir, open_state=None, max_depth=8, max_nodes=2000):
             name = e.name
             if name.startswith("."):
                 continue
+            # v1.2.5: 归档 / 备份目录整棵不出现; 插件产物文件不计数
+            if _is_hidden(Path(path) / name, hidden):
+                continue
             try:
                 if e.is_dir(follow_symlinks=False):
                     dir_entries.append(e)
                 elif e.is_file(follow_symlinks=False):
+                    if is_artifact_name(name):
+                        continue
                     file_count += 1
             except OSError:
                 continue
@@ -982,15 +1116,17 @@ def _kind_of(name):
     return "other"
 
 
-def list_output_files(output_dir, rel="", max_files=5000):
+def list_output_files(output_dir, rel="", max_files=5000, exclude_dirs=None):
     """递归列出 rel 文件夹下的所有文件(v1.2.2, 供「下载文件夹」用)
 
     -> {"ok","path","truncated","count","files":[{"rel","name","kind","size","mtime"}]}
     files[].rel 相对 output 根; 跳过 "." 开头的文件与目录; 超 max_files 置 truncated 并停止。
+    v1.2.5: 归档 / 备份目录整棵排除, 插件产物文件(thumb.* / info.json / …)不参与下载。
     """
     root = _output_root(output_dir)
     if root is None:
         return {"ok": False, "error": "Directory not found"}
+    hidden = hidden_roots(output_dir, list(exclude_dirs or []))
     try:
         limit = int(max_files)
     except Exception:
@@ -1004,6 +1140,8 @@ def list_output_files(output_dir, rel="", max_files=5000):
         return {"ok": False, "error": "Directory not found"}
 
     if target.is_file():
+        if is_artifact_name(target.name) or _is_hidden(target, hidden):
+            return {"ok": False, "error": "Directory not found"}
         try:
             st = target.stat()
         except OSError:
@@ -1017,9 +1155,10 @@ def list_output_files(output_dir, rel="", max_files=5000):
     files = []
     truncated = False
     for cur, dirs, names in os.walk(str(target)):
-        dirs[:] = [d for d in dirs if not d.startswith(".")]
+        dirs[:] = [d for d in dirs
+                   if not d.startswith(".") and not _is_hidden(Path(cur) / d, hidden)]
         for nm in names:
-            if nm.startswith("."):
+            if nm.startswith(".") or is_artifact_name(nm):
                 continue
             if len(files) >= limit:
                 truncated = True

@@ -5,6 +5,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 > 本文件记录 **ComfyUI-AssetManager** 的所有重要改动，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.2.5] - 2026-11-07
+
+### Fixed · 修复
+
+- **Preview thumbnails and archive/backup files no longer show up as browsable assets.** Every archive entry carries `thumb.jpg` / `info.json` / `prompt.txt` / `workflow.json`; the folder view used to list those as if they were your images and let you open them. They are now excluded from the folder list, the folder tree, folder downloads and the asset scan.
+  **预览用缩略图与归档/备份文件不再作为资产出现。** 每个归档条目都带 `thumb.jpg` / `info.json` / `prompt.txt` / `workflow.json`；文件夹视图以前会把它们当成你的图片列出来、还能点开。现在这些文件已从文件夹列表、左栏树、整文件夹下载与扫描中排除。
+
+- **The archive and backup directories are never browsed or scanned.** If `archive_dir` or `backup_dir` lives inside the output directory, they used to appear as ordinary folders (so you could walk into the library and see its internals), and — worse — the scanner **re-archived the archive itself**: in a reproduction, one scan produced six bogus entries (including a `thumb.jpg` "asset") and kept chaining. Those roots are now hidden entirely and skipped by the scanner.
+  **归档目录与备份目录不再被浏览或扫描。** 当 `archive_dir` / `backup_dir` 落在输出目录内时，它们以前会作为普通文件夹出现（于是你能走进库里看到它的内部文件），更糟的是扫描器会**把归档库自己再归档一遍**：复现中一次扫描产生了 6 条假条目（其中一条是 `thumb.jpg`"资产"）并持续连锁。现在这两个根目录被整体隐藏、扫描也跳过。
+
+- **Legacy bogus entries are hidden (not deleted).** Library entries already created by that self-archiving bug — ones whose `media` is a preview thumbnail or whose `source_rel` points inside the archive — are filtered out of every view. **No file is removed from disk**, so nothing is lost if you want to inspect them manually.
+  **历史遗留的假条目只隐藏、不删除。** 那个自噬缺陷已经产生的条目（`media` 是预览缩略图、或 `source_rel` 指向归档库内部）会从所有视图里过滤掉，**磁盘上一个文件都不删**，想人工检查随时能看到。
+
+### Notes · 说明
+
+- The rules are deliberately narrow: only the plugin's own fixed filenames (`thumb.<image ext>`, `info.json`, `prompt.txt`, `workflow.json`, `archive_state.json`, `open_state.json`, `ComfyUI_asset_backup_*.zip`) are treated as artifacts. A normal file such as `my_thumb.jpg` or `thumbnail.png` is still listed as your asset.
+  规则刻意收窄：只有插件自己的固定文件名（`thumb.<图片扩展名>`、`info.json`、`prompt.txt`、`workflow.json`、`archive_state.json`、`open_state.json`、`ComfyUI_asset_backup_*.zip`）被当作产物。`my_thumb.jpg`、`thumbnail.png` 这类正常文件仍作为你的资产列出。
+- Edge case: if `archive_dir` **is** the output directory itself, scanning is skipped entirely (it would otherwise archive itself forever); if `backup_dir` is the output directory, only the backup zips are hidden and browsing still works.
+  边界：若 `archive_dir` **就是**输出目录本身，扫描会被直接跳过（否则会永久自我归档）；若 `backup_dir` 就是输出目录，只隐藏备份 zip，浏览仍正常。
+
 ## [1.2.4] - 2026-11-03
 
 ### Added · 新增
@@ -114,7 +134,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Preview navigation with `←` / `→` inside the large-image dialog.<br>
   大图预览内用 `←` / `→` 翻页。
 
-[1.2.4]: https://github.com/wardenlee/ComfyUI-AssetManager/compare/452927af...HEAD
+[1.2.5]: https://github.com/wardenlee/ComfyUI-AssetManager/compare/02a7d41c...HEAD
+[1.2.4]: https://github.com/wardenlee/ComfyUI-AssetManager/compare/452927af...02a7d41c
 [1.2.3]: https://github.com/wardenlee/ComfyUI-AssetManager/compare/2abd11b3...452927af
 [1.2.2]: https://github.com/wardenlee/ComfyUI-AssetManager/compare/d06d239...2abd11b3
 [1.2.1]: https://github.com/wardenlee/ComfyUI-AssetManager/compare/29a9c05...d06d239
