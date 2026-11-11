@@ -491,11 +491,16 @@ def scan_all(output_dir, archive_dir, state, cfg):
                 r = archive_file(rel, src, archive_dir, state, cfg)
                 if r:
                     new_runs.append(r)
+                    # v1.3.4: 真机反馈——视频节点先写一版再重写, 两次 scan 各归档一条
+                    # (稳定窗只在单次 scan 内有效)。新条目归档成功后, 把同 source_rel 的
+                    # 旧条目移入回收站(软删除, 可恢复) —— 库里同源只保留最新条目。
+                    _retire_old_runs(rel, r["dir"], archive_dir)
             elif baseline_done or archive_existing:
                 # 基线已建立后的新文件, 或用户开启"归档历史" → 归档
                 r = archive_file(rel, src, archive_dir, state, cfg)
                 if r:
                     new_runs.append(r)
+                    _retire_old_runs(rel, r["dir"], archive_dir)
             else:
                 # 首次扫描且不归档历史: 只记录基线(不复制文件)
                 state[rel] = cur_key
@@ -973,6 +978,51 @@ def _trash_move_one(src, dst):
         return True
     except OSError:
         return False
+
+
+def _retire_old_runs(source_rel, new_dir, archive_dir):
+    """v1.3.4: 同 source_rel 重归档后, 把旧条目移入回收站(软删除, 可恢复)。
+
+    只在【新条目归档成功后】由 scan_all 调用; 直接扫 <日期>/<run>/info.json
+    (覆盖 list_runs 隐藏的坏条目); 任一失败不影响其余。
+    """
+    arch = Path(archive_dir)
+    if not arch.is_dir():
+        return
+    rel_new = str(new_dir or "").replace("\\", "/").strip("/")
+    try:
+        date_dirs = [d for d in arch.iterdir() if d.is_dir() and d.name != TRASH_DIR_NAME]
+    except OSError:
+        return
+    for date_dir in date_dirs:
+        try:
+            run_dirs = list(date_dir.iterdir())
+        except OSError:
+            continue
+        for run_dir in run_dirs:
+            if not run_dir.is_dir():
+                continue
+            rel_old = run_dir.relative_to(arch).as_posix()
+            if rel_old == rel_new:
+                continue
+            info_file = run_dir / "info.json"
+            if not info_file.is_file():
+                continue
+            try:
+                info = json.loads(info_file.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if not isinstance(info, dict):
+                continue
+            if (info.get("source_rel") or "") != source_rel:
+                continue
+            items = [{"name": run_dir.name, "orig_rel": rel_old,
+                      "size": _audit_dir_stats(run_dir), "kind_detail": "archive-run"}]
+            try:
+                batch = _trash_new_batch(archive_dir, "run", items)
+            except Exception:
+                continue
+            _trash_move_one(run_dir, _trash_root(archive_dir) / batch / run_dir.name)
 
 
 def trash_list(archive_dir):

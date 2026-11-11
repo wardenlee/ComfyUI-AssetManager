@@ -5,6 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 > 本文件记录 **ComfyUI-AssetManager** 的所有重要改动，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.3.4] - 2026-11-11
+
+### Fixed · 修复
+
+- **One generation now leaves exactly one archive entry per video.** Real-world report: a video node writes the mp4 once, then post-processing rewrites the same file; the six-second write-stability window only guards *within* a single scan, so the pre-rewrite version got archived first and the finished one second — two grid/calendar entries for one file, the first one unplayable (and downloaded copies too). After a successful re-archive, the scanner now **retires the older same-source entries into the trash** (restorable, keeping `info.json`), so the library keeps only the newest, playable version. Different sources are untouched, and nothing is deleted without going through the trash.<br>
+  **一次生成现在只留一条归档。** 真机反馈：视频节点先写一版 mp4、后处理又重写同一文件——6 秒写入稳定窗只守单次扫描之内的变化，两次扫描之间完成的重写会先后归档两条，先归档的是写一半的版本（无法预览、下载也无法播放）。现在重新归档成功后，扫描器会把**同源的旧条目移入回收站**（保留 `info.json`、可恢复），库里同源只留最新可播放版本；不同来源互不影响，一切旧数据都经回收站可找回。
+
 ## [1.3.3] - 2026-11-11
 
 ### Added · 新增
