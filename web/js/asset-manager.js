@@ -270,6 +270,7 @@ app.registerExtension({
       "浏览器无法播放该视频": "The browser cannot play this video",
       "可用「下载文件」保存后用本地播放器打开": "Use Download file to save it, then open it with a local player",
       "该产物未携带媒体文件": "This asset has no media file",
+      "该文件不支持预览，可用「下载文件」保存": "Preview is not supported for this file — use Download file to save it",
       "根": "Root",
       "下载": "Download",
       "（根目录不能改名）": "(the root folder cannot be renamed)",
@@ -892,7 +893,12 @@ app.registerExtension({
       ].filter(Boolean)));
       card.onclick = (ev) => {
         const shift = !!(ev && ev.shiftKey);
-        if (!multi && !shift) { openOutputFile(f); return; }
+        if (!multi && !shift) {
+          // v1.2.7: 非媒体文件(📄)没有可预览的内容 —— 不再打开预览弹窗, 只提示可下载
+          if (f.kind === "other") { statusMsg(t("该文件不支持预览，可用「下载文件」保存")); return; }
+          openOutputFile(f);
+          return;
+        }
         pickInFolder(f.rel, ev);
       };
       fGrid.appendChild(card);
@@ -1084,7 +1090,17 @@ app.registerExtension({
     }
     function openOutputFile(f) {
       // v1.2.2: 传入当前显示列表 → 文件夹视图里也能 ←/→ 翻页(与网格/日历一致)
-      openOutputPreview(f, filterFolderFiles());
+      // v1.2.7: 翻页列表只含可预览的媒体(图/视频) —— 📄 其他文件不进翻页序列
+      openOutputPreview(f, previewFolderFiles());
+    }
+    // 可预览列表 = 当前显示列表(含搜索/kind 筛选)去掉「其他」文件
+    function previewFolderFiles() {
+      return filterFolderFiles().filter((f) => f.kind !== "other");
+    }
+    // 整份可预览列表 = 当前文件夹里全部可预览媒体(**忽略筛选**) —— 供"筛选后剩1项"的回退
+    function allPreviewFolderFiles() {
+      return sortItems((folderData.files || []).filter((f) => f.kind !== "other"), sortMode,
+                       (x) => x.name, (x) => x.created, (x) => x.opened);
     }
     // v1.2.2: 按钮启用规则 —— 剪切/粘贴仅「文件」类型; 下载任一类型; 删除看文件夹选中或当前文件夹
     function updateFolderBtns() {
@@ -1299,11 +1315,11 @@ app.registerExtension({
 
     // 文件夹视图里预览 output 文件; v1.2.2: 与网格/日历一致, ←/→ 翻页(循环 / n 总数 / 预加载)
     function openOutputPreview(f, listArg) {
-      let list = (Array.isArray(listArg) && listArg.length ? listArg : filterFolderFiles()).slice();
-      // v1.2.4: 若筛选后的列表只剩一项、但当前文件夹里其实有多张, 则改用整个文件夹的
-      // 文件列表来翻页 —— 否则一侧的箭头会跟着消失(用户反馈"看不到左右箭头"的常见触发)。
+      let list = (Array.isArray(listArg) && listArg.length ? listArg : previewFolderFiles()).slice();
+      // v1.2.4: 若翻页列表只剩一项、但当前文件夹里其实有多张可预览的媒体, 则改用整份
+      // 可预览列表来翻页 —— 否则一侧的箭头会跟着消失(用户反馈"看不到左右箭头"的常见触发)。
       if (list.length < 2) {
-        const all = sortItems((folderData.files || []).slice(), sortMode, (x) => x.name, (x) => x.created, (x) => x.opened);
+        const all = allPreviewFolderFiles();
         if (all.length > list.length) list = all;
       }
       let idx = list.findIndex((x) => x.rel === f.rel);

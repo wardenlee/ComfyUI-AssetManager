@@ -28,8 +28,10 @@ An in-panel **asset manager** for ComfyUI that auto-archives every image/video y
   **统一排序** — 一个「排序」下拉作用于所有视图：**新建时间** ↓/↑、**打开时间** ↓/↑、**名称** A→Z / Z→A，**默认最近新建的排在前面**。「打开时间」由插件记录（你在面板里最后一次预览/打开它的时间）。
 - **Search & filter** — full-text search by prompt/model/filename/date; filter by image/video.<br>
   **搜索与过滤** — 按提示词/模型/文件名/日期全文搜索，按图片/视频过滤。
-- **Preview & reproduce** — view full-size images / play videos, copy prompt, download `workflow.json` (drag it back onto the canvas to restore the whole workflow).<br>
-  **预览与复现** — 点开看大图/播视频、复制提示词、下载 workflow.json（拖回画布还原整套工作流）。
+- **Junk and half-written files never pollute the library.** Partial-download suffixes (`.part` / `.tmp` / `.crdownload` / `.download`) and 0-byte media files are skipped by the scanner and hidden from every list, the folder tree and folder downloads; broken archive entries (media deleted or 0-byte) stay out of the grid and calendar. Files that don't support previewing show a hint instead of an empty dialog, and the folder-view paging sequence contains only previewable media.<br>
+  **垃圾与半成品文件不会污染资产库。** 半成品后缀（`.part` / `.tmp` / `.crdownload` / `.download`）与 0 字节媒体文件被扫描器跳过，不出现在任何列表/左栏树/文件夹下载里；媒体缺失或 0 字节的坏归档条目不进网格/日历。无法预览的文件点击时只给提示、不弹空窗；文件夹视图翻页序列只含可预览媒体。
+- **Preview & reproduce** — view full-size images / play videos, copy prompt, download the file itself (the original output file in the folder view, the archived media copy in the grid/calendar views).<br>
+  **预览与复现** — 点开看大图/播视频、复制提示词、下载文件本体（文件夹视图里是 output 的原始文件，网格/日历里是归档库中的媒体副本）。
 - **Preview navigation** — inside the large-image preview press `←` / `→` (or the on-screen arrows) to flip through the current batch without closing it; wraps around, shows `n / total`, `Esc` closes, adjacent images are preloaded. The preview dialog is now as tall as the main panel and ~30% wider; the arrows sit outside the image, close to the panel edges.<br>
   **大图翻页** — 大图预览里按 `←` / `→`（或屏幕左右箭头）直接翻当前这批图，不用关掉再点下一张；循环切换、显示 `n / 总数`、`Esc` 关闭、相邻图预加载。预览面板现在与主面板同高、宽约 +30%，箭头在图片外、贴着面板边缘。
 - **Batch delete** — multi-select and delete from disk in one click (archive copy + original output file); single delete too.<br>
@@ -98,8 +100,8 @@ Download the repo zip and extract it into `ComfyUI/custom_nodes/`, keeping the f
    启动 ComfyUI，顶部菜单栏点「**资产管理**」打开面板。
 2. Top toolbar: search box, view switch (grid / calendar / **folder**), all/image/video filter, **Sort**, multi-select, backup, scan, settings.<br>
    顶部工具栏：搜索框、视图切换（网格 / 日历 / **文件夹**）、全部/图片/视频过滤、**排序**、多选、备份、扫描、资产设置。
-3. Click an asset → preview dialog: copy prompt / download workflow.json (drag back to canvas to reproduce) / delete from disk.<br>
-   点产物 → 预览弹窗：复制提示词 / 下载 workflow.json（拖回画布复现）/ 从硬盘删除。
+3. Click an asset → preview dialog: copy prompt / download the file / delete from disk. (The workflow is still embedded in every PNG/MP4 and kept in each archive entry's `info.json`.)<br>
+   点产物 → 预览弹窗：复制提示词 / 下载文件 / 从硬盘删除。（工作流元数据仍内嵌在每个 PNG/MP4 里，也保留在归档条目的 `info.json` 中。）
 4. **Folder view**: the left panel top holds two compact button rows (`新建` / `改名` / `删除` / `刷新` for folders, then `多选` / `剪切` / `粘贴` / `下载` for the ticked items — no icons, to save space); below them the breadcrumb and then the **whole folder tree** of your output directory (a `根` row on top). Click any folder, or walk the tree with `↑` / `↓`, and the right panel switches to that folder's images right away; the tree keeps its place while you move around, so nothing jumps. `新建` creates inside the current folder; `改名` acts on the current folder. To move assets: turn on `多选`, tick the assets in the right panel, press `剪切`, walk to the target folder, press `粘贴`. To download: tick files, or tick folders (the ticks are visible, and folder/file selection are mutually exclusive), then press `下载` — folder downloads include sub-folders. Opening a file shows the same preview buttons as the other views.<br>
    **文件夹视图**：左栏顶部是两行紧凑按钮（文件夹操作用 `新建` / `改名` / `删除` / `刷新`，勾选后的操作用 `多选` / `剪切` / `粘贴` / `下载`，**都不带图标以省空间**）；下面依次是面包屑与输出目录的**整棵文件夹树**（最上面一行是 `根`）。点任一文件夹、或用 `↑` / `↓` 走树，右侧**立刻**切到该文件夹的图片；来回切换时树的位置保持不变，不会上下跳。`新建` 建在当前文件夹内；`改名` 作用于当前文件夹。搬移资产：打开 `多选`，在右栏勾选资产 → `剪切` → 走到目标文件夹 → `粘贴`。下载：勾选文件、或勾选文件夹（勾选可见，且文件与文件夹选中互斥），再点 `下载` —— 下载文件夹会**连子目录一起下**。点开文件后，预览里的按钮与其它视图一致。
 5. **Sort**: pick created time / last-opened time / name, each ascending or descending — the choice applies to the folder list, the asset grid and the calendar day list, and is remembered.<br>

@@ -5,6 +5,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 > 本文件记录 **ComfyUI-AssetManager** 的所有重要改动，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.2.7] - 2026-11-11
+
+### Fixed · 修复
+
+- **Half-written files no longer pollute the library.** Partial-download suffixes (`.part` / `.tmp` / `.crdownload` / `.download`) are skipped by the scanner and hidden from every list, the folder tree and folder downloads. 0-byte media files (a generation that died mid-write) are likewise never archived, never listed, not counted in the folder tree and excluded from folder downloads. Once the file exists with real content, the next scan admits it normally.<br>
+  **写一半的文件不再污染资产库。** 半成品后缀（`.part` / `.tmp` / `.crdownload` / `.download`）被扫描器跳过、不出现在任何列表/左栏树/文件夹下载里；0 字节媒体文件（写一半崩掉的残留）同样不归档、不显示、不计入树的文件数、不参与下载。等文件有了真实内容，下一次扫描自然入库。
+- **Broken archive entries no longer show up as un-previewable cards.** Runs whose media file was deleted from the archive, or whose media copy is 0 bytes, are hidden from the grid and calendar views (the entry stays on disk, untouched).<br>
+  **坏掉的归档条目不再以无法预览的卡片出现。** 归档条目的媒体文件已被删除、或媒体副本是 0 字节时，网格/日历不再显示该条目（条目数据保留在盘上，不动）。
+
+### Changed · 改动
+
+- **Files without a preview (📄 "other") no longer open an empty preview dialog.** Clicking one in the folder view shows a status hint instead ("该文件不支持预览，可用「下载文件」保存"), and the folder-view paging sequence (`←` / `→`) now contains only previewable media; the "filter leaves 1 item" paging fallback still ignores the filter but only counts previewable media.<br>
+  **无预览能力的文件（📄「其他」类）不再弹出空预览窗。** 在文件夹视图点它只给状态提示（"该文件不支持预览，可用「下载文件」保存"）；文件夹视图预览的翻页序列（`←` / `→`）只含可预览媒体；"筛选后剩 1 项"的翻页回退照旧忽略筛选，但只统计可预览媒体。
+
 ## [1.2.6] - 2026-11-11
 
 ### Fixed · 修复

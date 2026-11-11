@@ -453,6 +453,10 @@ def scan_all(output_dir, archive_dir, state, cfg):
                 continue
             if is_artifact_name(fn):
                 continue
+            # v1.2.7: 半成品后缀(.part/.tmp/.crdownload/.download)与 0 字节媒体是写一半的残留,
+            # 不归档也不建基线 —— 等它写完/有内容后再自然进入扫描
+            if is_half_written(fn):
+                continue
             if Path(fn).suffix.lower() not in ALL_EXT:
                 continue
             src = Path(root) / fn
@@ -460,6 +464,8 @@ def scan_all(output_dir, archive_dir, state, cfg):
             try:
                 st = os.stat(src)
             except OSError:
+                continue
+            if st.st_size == 0:
                 continue
             cur_key = {"size": st.st_size, "mtime_ns": st.st_mtime_ns}
             if state.get(rel) == cur_key:
@@ -562,9 +568,23 @@ def list_runs(archive_dir, open_state=None, skip_source_prefixes=None):
             if is_unplayable_video(info.get("media")):
                 continue
             try:
-                files = sorted(p.name for p in run_dir.iterdir() if p.is_file())
+                files = []
+                sizes = {}
+                for p in run_dir.iterdir():
+                    if not p.is_file():
+                        continue
+                    files.append(p.name)
+                    try:
+                        sizes[p.name] = p.stat().st_size
+                    except OSError:
+                        pass
+                files.sort()
             except OSError:
                 files = []
+            # v1.2.7: 媒体文件缺失或 0 字节的坏条目(无法预览)也不出现在网格/日历
+            _media = info.get("media") or ""
+            if _media and (sizes.get(_media) is None or sizes.get(_media) == 0):
+                continue
             run_rel = run_dir.relative_to(arch).as_posix()
             runs.append({
                 "id": info.get("run_id") or run_dir.name,
@@ -814,6 +834,28 @@ def is_unplayable_video(name):
     return Path(n).suffix.lower() in BROWSER_UNPLAYABLE_VIDEO_EXT
 
 
+# v1.2.7: 半成品后缀(下载中/临时文件) —— 不出现在列表/下载里, 也不归档
+HALF_WRITTEN_SUFFIXES = {".part", ".tmp", ".crdownload", ".download"}
+
+
+def is_half_written(name):
+    """是否是写一半的半成品文件(.part / .tmp / .crdownload / .download)"""
+    if not isinstance(name, str):
+        return False
+    n = name.strip()
+    if not n:
+        return False
+    return Path(n).suffix.lower() in HALF_WRITTEN_SUFFIXES
+
+
+def is_junk_media(name, size):
+    """媒体文件但 size==0 —— 写一半崩了留下的残留, 不出现在列表/归档"""
+    try:
+        return int(size) == 0 and _kind_of(name) != "other"
+    except Exception:
+        return False
+
+
 def hidden_roots(output_dir, extra_dirs=None):
     """output 之内需要整体隐藏的绝对路径(归档库 / 备份目录落在 output 里时)
 
@@ -1008,6 +1050,9 @@ def list_output(output_dir, rel="", archive_dir=None, open_state=None, exclude_d
         # v1.2.6: 浏览器放不出来的视频容器(.mkv 等)不在列表/预览里出现
         if is_unplayable_video(name):
             continue
+        # v1.2.7: 半成品后缀(.part/.tmp/…)不展示
+        if is_half_written(name):
+            continue
         size, created, mtime = 0, "", ""
         try:
             st = e.stat(follow_symlinks=False)
@@ -1016,6 +1061,9 @@ def list_output(output_dir, rel="", archive_dir=None, open_state=None, exclude_d
             mtime = _iso_ts(st.st_mtime)
         except OSError:
             pass
+        # v1.2.7: 0 字节媒体文件(写一半的残留)不展示
+        if is_junk_media(name, size):
+            continue
         ext = Path(name).suffix.lower()
         kind = "image" if ext in IMAGE_EXT else ("video" if ext in VIDEO_EXT else "other")
         run = index.get(child_rel) or {}
@@ -1089,8 +1137,13 @@ def folder_tree(output_dir, open_state=None, max_depth=8, max_nodes=2000, exclud
                 if e.is_dir(follow_symlinks=False):
                     dir_entries.append(e)
                 elif e.is_file(follow_symlinks=False):
-                    if is_artifact_name(name) or is_unplayable_video(name):
+                    if is_artifact_name(name) or is_unplayable_video(name) or is_half_written(name):
                         continue
+                    try:
+                        if is_junk_media(name, e.stat(follow_symlinks=False).st_size):
+                            continue
+                    except OSError:
+                        pass
                     file_count += 1
             except OSError:
                 continue
@@ -1177,7 +1230,7 @@ def list_output_files(output_dir, rel="", max_files=5000, exclude_dirs=None):
         dirs[:] = [d for d in dirs
                    if not d.startswith(".") and not _is_hidden(Path(cur) / d, hidden)]
         for nm in names:
-            if nm.startswith(".") or is_artifact_name(nm):
+            if nm.startswith(".") or is_artifact_name(nm) or is_half_written(nm):
                 continue
             # v1.2.6: 浏览器放不出来的视频容器不参与下载
             if is_unplayable_video(nm):
@@ -1189,6 +1242,9 @@ def list_output_files(output_dir, rel="", max_files=5000, exclude_dirs=None):
             try:
                 st = fp.stat()
             except OSError:
+                continue
+            # v1.2.7: 0 字节媒体不参与下载
+            if is_junk_media(nm, st.st_size):
                 continue
             try:
                 child_rel = fp.relative_to(root).as_posix()
