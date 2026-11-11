@@ -38,6 +38,9 @@ BACKUP_ZIP_RE = re.compile(r"^comfyui_asset_backup_\d{8}_\d{6}\.zip$", re.IGNORE
 RUN_ARTIFACT_NAMES = {"info.json", "prompt.txt", "workflow.json"}
 STATE_ARTIFACT_NAMES = {"archive_state.json", "open_state.json"}
 
+# v1.2.6: 浏览器普遍放不出来的视频容器 —— 不出现在任何列表/下载里(数据仍会归档, 只是不可见)
+BROWSER_UNPLAYABLE_VIDEO_EXT = {".mkv"}
+
 DEFAULT_CONFIG = {
     "output_dir": "",   # 空 = 使用 ComfyUI 默认 output
     "archive_dir": "",  # 空 = 使用 <ComfyUI>/asset_archive
@@ -555,6 +558,9 @@ def list_runs(archive_dir, open_state=None, skip_source_prefixes=None):
             # 只隐藏、不删盘: 历史遗留的假条目不再出现在任何视图里
             if _is_bogus_run(info.get("source_rel"), info.get("media"), prefixes):
                 continue
+            # v1.2.6: 浏览器放不出来的视频容器(.mkv 等)不在网格/日历出现
+            if is_unplayable_video(info.get("media")):
+                continue
             try:
                 files = sorted(p.name for p in run_dir.iterdir() if p.is_file())
             except OSError:
@@ -798,6 +804,16 @@ def is_artifact_name(name):
     return False
 
 
+def is_unplayable_video(name):
+    """浏览器普遍放不出来的视频容器(如 .mkv) —— 不出现在列表/下载/树里(数据仍会归档)"""
+    if not isinstance(name, str):
+        return False
+    n = name.strip()
+    if not n:
+        return False
+    return Path(n).suffix.lower() in BROWSER_UNPLAYABLE_VIDEO_EXT
+
+
 def hidden_roots(output_dir, extra_dirs=None):
     """output 之内需要整体隐藏的绝对路径(归档库 / 备份目录落在 output 里时)
 
@@ -989,6 +1005,9 @@ def list_output(output_dir, rel="", archive_dir=None, open_state=None, exclude_d
         # v1.2.5: 插件产物(thumb.* / info.json / prompt.txt / workflow.json / 备份 zip)不是资产, 不展示
         if is_artifact_name(name):
             continue
+        # v1.2.6: 浏览器放不出来的视频容器(.mkv 等)不在列表/预览里出现
+        if is_unplayable_video(name):
+            continue
         size, created, mtime = 0, "", ""
         try:
             st = e.stat(follow_symlinks=False)
@@ -1070,7 +1089,7 @@ def folder_tree(output_dir, open_state=None, max_depth=8, max_nodes=2000, exclud
                 if e.is_dir(follow_symlinks=False):
                     dir_entries.append(e)
                 elif e.is_file(follow_symlinks=False):
-                    if is_artifact_name(name):
+                    if is_artifact_name(name) or is_unplayable_video(name):
                         continue
                     file_count += 1
             except OSError:
@@ -1140,7 +1159,7 @@ def list_output_files(output_dir, rel="", max_files=5000, exclude_dirs=None):
         return {"ok": False, "error": "Directory not found"}
 
     if target.is_file():
-        if is_artifact_name(target.name) or _is_hidden(target, hidden):
+        if is_artifact_name(target.name) or is_unplayable_video(target.name) or _is_hidden(target, hidden):
             return {"ok": False, "error": "Directory not found"}
         try:
             st = target.stat()
@@ -1159,6 +1178,9 @@ def list_output_files(output_dir, rel="", max_files=5000, exclude_dirs=None):
                    if not d.startswith(".") and not _is_hidden(Path(cur) / d, hidden)]
         for nm in names:
             if nm.startswith(".") or is_artifact_name(nm):
+                continue
+            # v1.2.6: 浏览器放不出来的视频容器不参与下载
+            if is_unplayable_video(nm):
                 continue
             if len(files) >= limit:
                 truncated = True

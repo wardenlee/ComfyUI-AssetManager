@@ -266,6 +266,10 @@ app.registerExtension({
       "关闭": "Close",
       "该文件无法预览": "This file cannot be previewed",
       "该文件未归档，没有提示词元数据": "Not archived — no prompt metadata",
+      "下载文件": "Download file",
+      "浏览器无法播放该视频": "The browser cannot play this video",
+      "可用「下载文件」保存后用本地播放器打开": "Use Download file to save it, then open it with a local player",
+      "该产物未携带媒体文件": "This asset has no media file",
       "根": "Root",
       "下载": "Download",
       "（根目录不能改名）": "(the root folder cannot be renamed)",
@@ -388,6 +392,9 @@ app.registerExtension({
 
     function pad(n) { return String(n).padStart(2, "0"); }
     function mediaUrl(dir, f) { return "./asset/file?p=" + encodeURIComponent(dir + "/" + f); }
+    // v1.2.6: .gif 是动图, 必须按 <img> 渲染 —— 塞进 <video> 浏览器直接放不出来(黑屏), 即"无法预览的视频"
+    function isGifName(n) { return /\.gif$/i.test(String(n || "")); }
+    function isVideoRender(r) { return r.kind === "video" && !isGifName(r.media); }
 
     function matches(r, kw) {
       kw = kw.toLowerCase();
@@ -403,6 +410,9 @@ app.registerExtension({
       return await res.json();
     }
     function outUrl(rel) { return "./asset/output_file?p=" + encodeURIComponent(rel); }
+    // v1.2.6: 文件夹视图里以文件名判定(卡片/预览用), gif 同样按图片渲染
+    function isGifRel(n) { return isGifName(n); }
+    function isVideoRenderF(f) { return f.kind === "video" && !isGifName(f.name); }
     function fmtSize(n) {
       n = Number(n) || 0;
       if (n < 1024) return n + " B";
@@ -632,7 +642,7 @@ app.registerExtension({
       const card = $el("div.asm-card");
       if (selected.has(r.dir)) card.classList.add("selected");
       const thumb = r.thumb ? mediaUrl(r.dir, r.thumb) : mediaUrl(r.dir, r.media);
-      const isVid = r.kind === "video";
+      const isVid = isVideoRender(r);
       card.appendChild($el("div.m", {}, [
         $el("img", { src: thumb, loading: "lazy" }),
         isVid ? $el("div.play", { textContent: "▶" }) : null,
@@ -862,7 +872,7 @@ app.registerExtension({
     }
     function renderFileCard(f) {
       const on = selected.has(f.rel);
-      const isVid = f.kind === "video";
+      const isVid = isVideoRenderF(f);
       const card = $el("div.asm-card.asm-fcard" + (on ? ".selected" : ""));
       const thumbSrc = (f.run_dir && f.thumb) ? mediaUrl(f.run_dir, f.thumb) : outUrl(f.rel);
       let thumbEl;
@@ -1181,9 +1191,20 @@ app.registerExtension({
 
     function previewMedia(r) {
       const full = mediaUrl(r.dir, r.media);
-      return r.kind === "video"
+      // v1.2.6: .gif 是动图, 必须按 <img> 渲染(塞进 <video> 会黑屏)
+      return isVideoRender(r)
         ? $el("video", { src: full, controls: true, autoplay: true, muted: true, playsinline: true })
         : $el("img", { src: full });
+    }
+
+    // v1.2.6: 视频在浏览器里放不出来(编码/容器不支持)时的明确提示面板
+    function unplayableBox(name) {
+      return $el("div", { style: { textAlign: "center", color: "var(--descrip-text,#aaa)", padding: "30px 20px" } }, [
+        $el("div", { textContent: "⚠", style: { fontSize: "34px", marginBottom: "10px" } }),
+        $el("div", { textContent: t("浏览器无法播放该视频"), style: { fontSize: "14px", color: "var(--fg-color,#eee)", marginBottom: "6px" } }),
+        $el("div", { textContent: name || "", style: { fontSize: "12px", wordBreak: "break-all", marginBottom: "4px" } }),
+        $el("div", { textContent: t("可用「下载文件」保存后用本地播放器打开"), style: { fontSize: "12px" } }),
+      ]);
     }
 
     function closePreview() {
@@ -1226,7 +1247,15 @@ app.registerExtension({
         idx = ((i % list.length) + list.length) % list.length;
         const cur = list[idx];
         mediaBox.innerHTML = "";
-        mediaBox.appendChild(previewMedia(cur));
+        const media = previewMedia(cur);
+        mediaBox.appendChild(media);
+        // v1.2.6: 视频放不出来(编码/容器不支持)时给明确提示, 不再黑屏
+        if (media.tagName === "VIDEO") {
+          media.addEventListener("error", () => {
+            mediaBox.innerHTML = "";
+            mediaBox.appendChild(unplayableBox(cur.name));
+          });
+        }
         ta.value = (cur.positive || "") + (cur.negative ? "\n\nNegative prompt: " + cur.negative : "");
         rowsEl.innerHTML = "";
         rowsEl.appendChild(labeledRow([{ zh: "来源: ", text: cur.name }]));
@@ -1248,7 +1277,7 @@ app.registerExtension({
       function step(d) { if (list.length > 1) show(idx + d); }
 
       const copyBtn = bindText($el("button.asm-btn", { onclick: () => { ta.select(); navigator.clipboard?.writeText(ta.value).then(() => statusMsg(t("已复制"))); } }), "复制提示词");
-      const wfBtn = bindText($el("button.asm-btn.primary", { onclick: () => downloadWorkflow(list[idx]) }), "下载 workflow.json");
+      const dlBtn = bindText($el("button.asm-btn.primary", { onclick: () => downloadMediaFile(list[idx]) }), "下载文件");
       const delBtn = bindText($el("button.asm-btn.danger"), "🗑 从硬盘删除");
 
       const mediaWrap = $el("div.mediaWrap", {}, [mediaBox, prevBtn, nextBtn]);
@@ -1259,7 +1288,7 @@ app.registerExtension({
         rowsEl,
         bindText($el("label", { style: { fontSize: "12px" } }), "提示词"),
         ta,
-        $el("div.btns", {}, [copyBtn, wfBtn, delBtn]),
+        $el("div.btns", {}, [copyBtn, dlBtn, delBtn]),
       ]);
       m.appendChild($el("div.bk", { onclick: () => closePreview() }));
       m.appendChild(pn);
@@ -1294,7 +1323,9 @@ app.registerExtension({
       nextBtn.onclick = () => step(1);
 
       function mediaFor(x) {
-        if (x.kind === "video") return $el("video", { src: outUrl(x.rel), controls: true, autoplay: true, muted: true, playsinline: true });
+        // v1.2.6: .gif 按图片渲染(塞进 <video> 会黑屏); 视频用 <video>
+        if (isGifRel(x.name)) return $el("img", { src: outUrl(x.rel) });
+        if (isVideoRenderF(x)) return $el("video", { src: outUrl(x.rel), controls: true, autoplay: true, muted: true, playsinline: true });
         if (x.kind === "image") return $el("img", { src: outUrl(x.rel) });
         return $el("div", { textContent: t("该文件无法预览") });
       }
@@ -1308,7 +1339,15 @@ app.registerExtension({
         idx = ((i % list.length) + list.length) % list.length;
         const cur = list[idx];
         mediaBox.innerHTML = "";
-        mediaBox.appendChild(mediaFor(cur));
+        const media = mediaFor(cur);
+        mediaBox.appendChild(media);
+        // v1.2.6: 视频放不出来(编码/容器不支持)时给明确提示, 不再黑屏
+        if (media.tagName === "VIDEO") {
+          media.addEventListener("error", () => {
+            mediaBox.innerHTML = "";
+            mediaBox.appendChild(unplayableBox(cur.name));
+          });
+        }
         rowsEl.innerHTML = "";
         rowsEl.appendChild(labeledRow([{ zh: "文件名: ", text: cur.name }]));
         rowsEl.appendChild(labeledRow([{ zh: "时间: ", text: (cur.created || "") + " | " + (cur.mtime || "") }]));
@@ -1320,11 +1359,10 @@ app.registerExtension({
         nextBtn.style.display = solo ? "none" : "";
         pagerEl.style.display = solo ? "none" : "";
         preload(idx);
-        reportOpen("out:" + cur.rel); // 翻页也上报打开时间
-        // v1.2.3: 与网格/日历预览一致 —— 已归档的文件可复制提示词/下载 workflow
+                reportOpen("out:" + cur.rel); // 翻页也上报打开时间
+        // v1.2.3: 已归档的文件可复制提示词; v1.2.6: 「下载文件」对任何文件都可用
         ta.value = "";
         copyBtn.disabled = true;
-        wfBtn.disabled = true;
         if (!cur.run_dir) {
           bindText(ta, "该文件未归档，没有提示词元数据", "placeholder");
           return;
@@ -1335,7 +1373,6 @@ app.registerExtension({
           if (!info) { bindText(ta, "该文件未归档，没有提示词元数据", "placeholder"); return; }
           ta.value = (info.positive || "") + (info.negative ? "\n\nNegative prompt: " + info.negative : "");
           copyBtn.disabled = !ta.value;
-          wfBtn.disabled = !info.has_workflow;
         });
       }
       function step(d) { if (list.length > 1) show(idx + d); }
@@ -1343,7 +1380,7 @@ app.registerExtension({
       const ta = $el("textarea");
       bindText(ta, "提示词", "placeholder");
       const copyBtn = bindText($el("button.asm-btn", { onclick: () => { ta.select(); navigator.clipboard?.writeText(ta.value).then(() => statusMsg(t("已复制"))); } }), "复制提示词");
-      const wfBtn = bindText($el("button.asm-btn.primary", { onclick: () => downloadOutputWorkflow(list[idx]) }), "下载 workflow.json");
+      const dlBtn = bindText($el("button.asm-btn.primary", { onclick: () => downloadOutputFile(list[idx]) }), "下载文件");
       const delBtn = bindText($el("button.asm-btn.danger", { onclick: () => deleteOutputFile(list[idx]) }), "🗑 从硬盘删除");
       const mediaWrap = $el("div.mediaWrap", {}, [mediaBox, prevBtn, nextBtn]);
       const pn = $el("div.pn", {}, [
@@ -1353,7 +1390,7 @@ app.registerExtension({
         rowsEl,
         bindText($el("label", { style: { fontSize: "12px" } }), "提示词"),
         ta,
-        $el("div.btns", {}, [copyBtn, wfBtn, delBtn,
+        $el("div.btns", {}, [copyBtn, dlBtn, delBtn,
           bindText($el("button.asm-btn", { onclick: () => closePreview() }), "关闭"),
         ]),
       ]);
@@ -1375,15 +1412,20 @@ app.registerExtension({
       runInfoCache[dir] = info;
       return info;
     }
-    function downloadOutputWorkflow(f) {
-      if (!f || !f.run_dir) { statusMsg(t("该产物未携带 workflow 元数据")); return; }
-      fetch("./asset/file?p=" + encodeURIComponent(f.run_dir + "/workflow.json"))
-        .then(x => x.blob()).then(b => {
-          const a = document.createElement("a");
-          a.href = URL.createObjectURL(b);
-          a.download = safeName(f.name) + ".workflow.json";
-          a.click();
-        }).catch(() => statusMsg(t("下载失败")));
+    // v1.2.6: 「下载文件」—— 把 output 里的原始文件本体存下来(视频/图/其他都行)
+    async function downloadOutputFile(f) {
+      if (!f || !f.rel) return;
+      try {
+        const res = await fetch("./asset/output_file?p=" + encodeURIComponent(f.rel), { cache: "no-store" });
+        if (!res.ok) { statusMsg(t("下载失败")); return; }
+        const blob = await res.blob();
+        const mode = await saveBlobToLocal(blob, safeName(f.name));
+        statusMsg(mode === "dir" && dlDirHandle && dlDirHandle.name
+          ? (LANG === "zh" ? ("✅ 已保存 " + safeName(f.name) + " → 本地目录: " + dlDirHandle.name) : ("✅ Saved " + safeName(f.name) + " → local folder: " + dlDirHandle.name))
+          : (LANG === "zh" ? ("✅ 已开始下载: " + safeName(f.name)) : ("✅ Download started: " + safeName(f.name))));
+      } catch (e) {
+        statusMsg(t("下载失败") + (e && e.message ? "  " + e.message : ""));
+      }
     }
     // 删除单个 output 文件(已归档的连带删归档条目, 与网格预览的删除同语义)
     async function deleteOutputFile(f) {
@@ -1416,15 +1458,20 @@ app.registerExtension({
     }
     document.addEventListener("keydown", onPreviewKey, true);
 
-    function downloadWorkflow(r) {
-      if (!r.has_workflow) { statusMsg(t("该产物未携带 workflow 元数据")); return; }
-      fetch("./asset/file?p=" + encodeURIComponent(r.dir + "/workflow.json"))
-        .then(x => x.blob()).then(b => {
-          const a = document.createElement("a");
-          a.href = URL.createObjectURL(b);
-          a.download = r.name.replace(/[\\/:*?"<>|]/g, "_") + ".workflow.json";
-          a.click();
-        }).catch(() => statusMsg(t("下载失败")));
+    // v1.2.6: 「下载文件」—— 把归档库里的媒体副本本体存下来(原文件名)
+    async function downloadMediaFile(r) {
+      if (!r || !r.media) { statusMsg(t("该产物未携带媒体文件")); return; }
+      try {
+        const res = await fetch("./asset/file?p=" + encodeURIComponent(r.dir + "/" + r.media), { cache: "no-store" });
+        if (!res.ok) { statusMsg(t("下载失败")); return; }
+        const blob = await res.blob();
+        const mode = await saveBlobToLocal(blob, safeName(r.media));
+        statusMsg(mode === "dir" && dlDirHandle && dlDirHandle.name
+          ? (LANG === "zh" ? ("✅ 已保存 " + safeName(r.media) + " → 本地目录: " + dlDirHandle.name) : ("✅ Saved " + safeName(r.media) + " → local folder: " + dlDirHandle.name))
+          : (LANG === "zh" ? ("✅ 已开始下载: " + safeName(r.media)) : ("✅ Download started: " + safeName(r.media))));
+      } catch (e) {
+        statusMsg(t("下载失败") + (e && e.message ? "  " + e.message : ""));
+      }
     }
 
     async function doDelete(r, modal, onDone) {

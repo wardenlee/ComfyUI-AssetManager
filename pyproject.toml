@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-asset-manager"
 description = "ComfyUI asset manager: auto-archives generated images/videos with prompts, params, models and workflows; grid, calendar & folder browsing with a left-hand folder tree, arrow-key navigation, independently scrolling panels and a non-jumping tree, folder create/rename/delete, multi-select folders or files with visible ticks, whole-folder downloads (recursive), a preview dialog with the same copy-prompt / download-workflow / delete buttons in every view, cut-and-paste asset moving with archive relinking, unified sorting by created/last-opened time and name, search, batch delete, one-click backup, output directory switching."
-version = "1.2.5"
+version = "1.2.6"
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [{ name = "Wumihaze", email = "317549200+wumihaze@users.noreply.github.com" }]

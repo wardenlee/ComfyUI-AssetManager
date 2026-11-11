@@ -5,6 +5,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 > 本文件记录 **ComfyUI-AssetManager** 的所有重要改动，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.2.6] - 2026-11-11
+
+### Fixed · 修复
+
+- **Animated `.gif` outputs are now previewable.** `.gif` was classified as a video, so it was handed to a `<video>` element — which browsers refuse to play, showing a black box instead of the animation. GIFs are now rendered as images everywhere (cards and previews in all views).<br>
+  **`.gif` 产物现在可以预览了。** `.gif` 此前被归为视频，被塞进 `<video>` 元素——浏览器直接拒绝播放，只显示黑框。现在所有视图（卡片与大图预览）都按图片渲染动图。
+- **Videos the browser cannot play no longer show up as unplayable black boxes.** Non-browser containers like `.mkv` are now excluded from every list, the folder tree, folder downloads and the grid/calendar views (the files themselves are still archived — just not shown). And if a video still fails to load in the preview (e.g. HEVC), the dialog now shows a clear "the browser cannot play this video" panel with the filename instead of a black screen.<br>
+  **浏览器放不出来的视频不再以黑框形式出现。** `.mkv` 这类非浏览器容器已从所有列表、左栏树、整文件夹下载与网格/日历视图中排除（文件本体仍会归档，只是不展示）；若预览里仍有视频加载失败（如 HEVC），弹窗会明确显示"浏览器无法播放该视频"和文件名，而不是黑屏。
+
+### Changed · 改动
+
+- **The preview's `下载 workflow.json` button is now `下载文件`.** It downloads the file itself — the original output file in the folder view, the archived media copy in the grid/calendar views — for videos, images and everything else. (The `workflow.json` file is still kept in the archive on disk; the UI no longer offers a button for it.)<br>
+  **预览里的 `下载 workflow.json` 按钮改为 `下载文件`。** 它下载文件本体——文件夹视图里是 output 的原始文件，网格/日历里是归档库中的媒体副本——视频、图片、其他文件都可以。（`workflow.json` 仍保留在归档库磁盘上，只是界面不再提供该按钮。）
+
 ## [1.2.5] - 2026-11-07
 
 ### Fixed · 修复
@@ -134,7 +148,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Preview navigation with `←` / `→` inside the large-image dialog.<br>
   大图预览内用 `←` / `→` 翻页。
 
-[1.2.5]: https://github.com/wardenlee/ComfyUI-AssetManager/compare/02a7d41c...HEAD
+[1.2.6]: https://github.com/wardenlee/ComfyUI-AssetManager/compare/4fff87f5...HEAD
+[1.2.5]: https://github.com/wardenlee/ComfyUI-AssetManager/compare/02a7d41c...4fff87f5
 [1.2.4]: https://github.com/wardenlee/ComfyUI-AssetManager/compare/452927af...02a7d41c
 [1.2.3]: https://github.com/wardenlee/ComfyUI-AssetManager/compare/2abd11b3...452927af
 [1.2.2]: https://github.com/wardenlee/ComfyUI-AssetManager/compare/d06d239...2abd11b3
