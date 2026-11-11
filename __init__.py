@@ -20,7 +20,7 @@ WEB_DIRECTORY = "web"
 NODE_CLASS_MAPPINGS = {}
 NODE_DISPLAY_NAME_MAPPINGS = {}
 
-__version__ = "1.2.9"
+__version__ = "1.3.0"
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _cfg = assets_core.load_config(BASE_DIR)
@@ -232,7 +232,8 @@ async def asset_delete_output_dir(request):
         with _LOCK:
             return assets_core.delete_output_dir(_current_output_dir(),
                                                  body.get("path", ""),
-                                                 bool(body.get("recursive", False)))
+                                                 bool(body.get("recursive", False)),
+                                                 _arch)
 
     try:
         result = await asyncio.to_thread(_go)
@@ -411,6 +412,54 @@ async def asset_delete(request):
             return assets_core.delete_run(_arch, _current_output_dir(), _state, run_id)
 
     result = await asyncio.to_thread(_go)
+    return web.json_response(result)
+
+
+@PromptServer.instance.routes.get("/asset/trash_list")
+async def asset_trash_list(request):
+    """v1.3.0 回收站清单(只读)"""
+    def _go():
+        return assets_core.trash_list(_arch)
+
+    try:
+        result = await asyncio.to_thread(_go)
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)})
+    return web.json_response(result)
+
+
+@PromptServer.instance.routes.post("/asset/trash_restore")
+async def asset_trash_restore(request):
+    """v1.3.0 恢复回收站批次(或单个 item)到原位"""
+    body = await _json_body(request)
+    batch = body.get("batch")
+    item = body.get("item") or None
+
+    def _go():
+        with _LOCK:
+            return assets_core.trash_restore(_arch, _current_output_dir(), batch, item)
+
+    try:
+        result = await asyncio.to_thread(_go)
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)})
+    return web.json_response(result)
+
+
+@PromptServer.instance.routes.post("/asset/trash_purge")
+async def asset_trash_purge(request):
+    """v1.3.0 永久删除一个回收站批次(前端二次确认后调用)"""
+    body = await _json_body(request)
+    batch = body.get("batch")
+
+    def _go():
+        with _LOCK:
+            return assets_core.trash_purge(_arch, batch)
+
+    try:
+        result = await asyncio.to_thread(_go)
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)})
     return web.json_response(result)
 
 

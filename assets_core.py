@@ -615,6 +615,10 @@ def list_runs(archive_dir, open_state=None, skip_source_prefixes=None):
 # ---------------------------------------------------------------------------
 
 def delete_run(archive_dir, output_dir, state, run_id):
+    """v1.3.0: 删归档条目 = 整批移入回收站(条目本体 + output 源文件), 可恢复。
+
+    对外返回结构与旧版一致(ok/source_rel), 新增 "trash": 批次名。
+    """
     arch = Path(archive_dir).resolve()
     out = Path(output_dir).resolve() if output_dir else None
     if not run_id or not isinstance(run_id, str):
@@ -631,18 +635,27 @@ def delete_run(archive_dir, output_dir, state, run_id):
         source_rel = info.get("source_rel")
     except Exception:
         pass
-    shutil.rmtree(run_dir)
+
+    items = [{"name": run_dir.name, "orig_rel": run_id.replace("\\", "/").strip("/"),
+              "size": _audit_dir_stats(run_dir), "kind_detail": "archive-run"}]
+    src_file = None
     if source_rel and out:
-        src = (out / source_rel).resolve()
-        # 防穿越: source_rel 必须解析后仍位于 output 目录内
-        if str(src).startswith(str(out) + os.sep) and src.is_file():
-            try:
-                src.unlink()
-            except Exception:
-                pass
+        cand = (out / source_rel).resolve()
+        if str(cand).startswith(str(out) + os.sep) and cand.is_file():
+            src_file = cand
+            items.append({"name": Path(source_rel).name, "orig_rel": source_rel,
+                          "size": cand.stat().st_size, "kind_detail": "output-file"})
+    batch = _trash_new_batch(archive_dir, "run", items)
+    bdir = _trash_root(archive_dir) / batch
+    moved = _trash_move_one(run_dir, bdir / run_dir.name)
+    if not moved:
+        return {"ok": False, "error": "Failed to move archive entry to trash"}
+    if src_file is not None:
+        _trash_move_one(src_file, bdir / Path(source_rel).name)
+    if source_rel:
         state.pop(source_rel, None)
     save_state(archive_dir, state)
-    return {"ok": True, "source_rel": source_rel}
+    return {"ok": True, "source_rel": source_rel, "trash": batch}
 
 
 # ---------------------------------------------------------------------------
@@ -899,6 +912,204 @@ def audit_archive(archive_dir, output_dir=None, skip_source_prefixes=None):
             "orphans": orphans,
             "same_content": same_content,
             "skipped": skipped}
+
+
+# ---------------------------------------------------------------------------
+# v1.3.0: 统一可回滚软删除(§6(C)-②) —— 三条删除路径统一移入 <archive_dir>/_trash
+# ---------------------------------------------------------------------------
+
+TRASH_DIR_NAME = "_trash"
+
+
+def _trash_root(archive_dir):
+    """回收站根目录: <archive_dir>/_trash"""
+    return Path(archive_dir) / TRASH_DIR_NAME
+
+
+def _trash_new_batch(archive_dir, kind, items, when=None):
+    """新建一个回收站批次目录并写入 manifest; items 已由调用方移入。
+
+    items: [{"name": 批次内文件/目录名, "orig_rel": 原相对路径, "size": n, "kind_detail": str|None}]
+    """
+    root = _trash_root(archive_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    when_dt = None
+    if when:
+        try:
+            when_dt = datetime.fromisoformat(str(when))
+        except Exception:
+            when_dt = None
+    if when_dt is None:
+        when_dt = datetime.now()
+    stamp = when_dt.strftime("%Y%m%d-%H%M%S")
+    batch = stamp + "_" + kind
+    n = 2
+    while (root / batch).exists():
+        batch = stamp + "_" + kind + "_" + str(n)
+        n += 1
+    bdir = root / batch
+    bdir.mkdir()
+    manifest = {"batch": batch, "when": when_dt.isoformat(timespec="seconds"),
+                "kind": kind, "count": len(items), "items": items}
+    (bdir / "trash_manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=1), encoding="utf-8")
+    return batch
+
+
+def _trash_move_one(src, dst):
+    """把 src 移到 dst; 同盘 shutil.move, 失败 fallback 复制+删原。"""
+    try:
+        shutil.move(str(src), str(dst))
+        return True
+    except OSError:
+        pass
+    try:
+        if Path(src).is_dir():
+            shutil.copytree(str(src), str(dst))
+            shutil.rmtree(str(src))
+        else:
+            shutil.copy2(str(src), str(dst))
+            os.remove(str(src))
+        return True
+    except OSError:
+        return False
+
+
+def trash_list(archive_dir):
+    """回收站批次清单(新→旧), 每批含件数/占用/内容摘要。只读。"""
+    root = _trash_root(archive_dir)
+    batches = []
+    if not root.is_dir():
+        return {"ok": True, "batches": []}
+    try:
+        dirs = [p for p in root.iterdir() if p.is_dir()]
+    except OSError:
+        return {"ok": True, "batches": []}
+    for bdir in dirs:
+        mf = bdir / "trash_manifest.json"
+        try:
+            manifest = json.loads(mf.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if not isinstance(manifest, dict):
+            continue
+        items = []
+        total = 0
+        for it in (manifest.get("items") or []):
+            if not isinstance(it, dict):
+                continue
+            size = 0
+            try:
+                p = bdir / it.get("name")
+                if p.is_file():
+                    size = p.stat().st_size
+                elif p.is_dir():
+                    size = _audit_dir_stats(p)
+            except OSError:
+                pass
+            total += size
+            items.append({"name": it.get("name") or "", "orig_rel": it.get("orig_rel") or "",
+                          "size": size})
+        batches.append({"batch": manifest.get("batch") or bdir.name,
+                        "when": manifest.get("when") or "",
+                        "kind": manifest.get("kind") or "run",
+                        "count": len(items),
+                        "bytes": total,
+                        "items": items})
+    batches.sort(key=lambda b: b.get("when") or "", reverse=True)
+    return {"ok": True, "batches": batches}
+
+
+def trash_restore(archive_dir, output_dir, batch, item=None):
+    """恢复一个批次(或其中单个 item)到原位; 目标已存在同名 -> ok False。"""
+    root = _trash_root(archive_dir)
+    bdir = (root / str(batch)).resolve()
+    if bdir == root.resolve() or not str(bdir).startswith(str(root.resolve()) + os.sep):
+        return {"ok": False, "error": "Invalid batch"}
+    mf = bdir / "trash_manifest.json"
+    if not mf.is_file():
+        return {"ok": False, "error": "Batch not found"}
+    try:
+        manifest = json.loads(mf.read_text(encoding="utf-8"))
+    except Exception:
+        return {"ok": False, "error": "Manifest unreadable"}
+    entries = manifest.get("items") or []
+    if item:
+        entries = [e for e in entries if isinstance(e, dict) and e.get("name") == item]
+        if not entries:
+            return {"ok": False, "error": "Item not found"}
+    restored, failed = 0, []
+    out_root = Path(output_dir).resolve() if output_dir else None
+    for e in entries:
+        name = e.get("name") or ""
+        orig_rel = (e.get("orig_rel") or "").replace("\\", "/").strip("/")
+        src = bdir / name
+        if not name or not src.exists():
+            failed.append(name)
+            continue
+        # v1.3.0 修正: 按 item 的 kind_detail 分流(一个 run 批次里混有归档条目与 output 源文件),
+        # 不能按 manifest.kind 一刀切 —— 否则 output 源文件会被错误恢复进归档库。
+        detail = e.get("kind_detail") or ""
+        if detail == "archive-run":
+            # 恢复条目目录回归档库原位: orig_rel 形如 <date>/<run_id>
+            if not orig_rel or ".." in orig_rel.split("/"):
+                failed.append(name)
+                continue
+            dst = Path(archive_dir) / orig_rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+        else:
+            # output_file / output_dir: 恢复回 output 原位
+            if not orig_rel or out_root is None or ".." in orig_rel.split("/"):
+                failed.append(name)
+                continue
+            dst = out_root / orig_rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+        if dst.exists():
+            failed.append(name)
+            continue
+        if _trash_move_one(src, dst):
+            restored += 1
+        else:
+            failed.append(name)
+    # 全部恢复成功的批次目录清理; 部分成功则重写 manifest 保留剩余
+    if not failed and not item:
+        try:
+            shutil.rmtree(str(bdir))
+        except OSError:
+            pass
+    elif restored:
+        rest = [e for e in (manifest.get("items") or [])
+                if isinstance(e, dict) and e.get("name") not in set(
+                    x for x in [e2.get("name") for e2 in entries])]
+        if not rest:
+            try:
+                shutil.rmtree(str(bdir))
+            except OSError:
+                pass
+        else:
+            manifest["items"] = rest
+            manifest["count"] = len(rest)
+            try:
+                mf.write_text(json.dumps(manifest, ensure_ascii=False, indent=1),
+                              encoding="utf-8")
+            except OSError:
+                pass
+    return {"ok": not failed, "restored": restored, "failed": failed}
+
+
+def trash_purge(archive_dir, batch):
+    """永久删除一个回收站批次(前端二次确认后调用)。"""
+    root = _trash_root(archive_dir).resolve()
+    bdir = (root / str(batch)).resolve()
+    if bdir == root or not str(bdir).startswith(str(root) + os.sep):
+        return {"ok": False, "error": "Invalid batch"}
+    if not bdir.is_dir():
+        return {"ok": False, "error": "Batch not found"}
+    try:
+        shutil.rmtree(str(bdir))
+    except OSError as e:
+        return {"ok": False, "error": "Failed to purge: " + _err_brief(e)}
+    return {"ok": True, "batch": batch}
 
 
 
@@ -1571,7 +1782,12 @@ def rename_output(output_dir, rel="", new_name="", archive_dir=None, state=None)
     return result
 
 
-def delete_output_dir(output_dir, rel="", recursive=False):
+def delete_output_dir(output_dir, rel="", recursive=False, archive_dir=None):
+    """删除 output 下的文件夹。
+
+    v1.3.0: 传 archive_dir 时移入回收站(可恢复); 不传 archive_dir 时保持旧的两步
+    删除语义直接抹盘(向后兼容旧调用, 但路由层恒传 archive_dir)。
+    """
     root = _output_root(output_dir)
     if root is None:
         return {"ok": False, "error": "Directory not found"}
@@ -1590,6 +1806,15 @@ def delete_output_dir(output_dir, rel="", recursive=False):
     n_files = _dir_file_count(target)
     if not recursive and _dir_entry_count(target) > 0:
         return {"ok": False, "error": "Folder is not empty", "files": n_files}
+    # v1.3.0: 传了 archive_dir 就移入回收站(可恢复); 未传 = 旧直接删除语义
+    if archive_dir:
+        items = [{"name": target.name, "orig_rel": rel_n,
+                  "size": n_files, "kind_detail": "output-dir"}]
+        batch = _trash_new_batch(archive_dir, "output_dir", items)
+        bdir = _trash_root(archive_dir) / batch
+        if not _trash_move_one(target, bdir / target.name):
+            return {"ok": False, "error": "Failed to move folder to trash"}
+        return {"ok": True, "files": n_files, "trash": batch}
     try:
         if recursive:
             shutil.rmtree(str(target))
@@ -1624,10 +1849,22 @@ def delete_output_file(output_dir, rel="", archive_dir=None, state=None):
         return {"ok": False, "error": "Not a file"}
     if not target.is_file():
         return {"ok": False, "error": "Not found"}
-    try:
-        target.unlink()
-    except OSError as e:
-        return {"ok": False, "error": "Failed to delete file: " + _err_brief(e)}
+
+    # v1.3.0: 传了 archive_dir 就移入回收站(可恢复); 未传 = 旧直接删除语义(向后兼容 v1.2.3 调用)
+    if not archive_dir:
+        try:
+            target.unlink()
+        except OSError as e:
+            return {"ok": False, "error": "Failed to delete file: " + _err_brief(e)}
+        return {"ok": True, "rel": rel_n, "archives_removed": 0}
+
+    items = [{"name": target.name, "orig_rel": rel_n,
+              "size": target.stat().st_size,
+              "kind_detail": "output-file"}]
+    batch = _trash_new_batch(archive_dir, "output_file", items)
+    bdir = _trash_root(archive_dir) / batch
+    if not _trash_move_one(target, bdir / target.name):
+        return {"ok": False, "error": "Failed to move file to trash"}
 
     removed = 0
     if archive_dir:
@@ -1643,11 +1880,14 @@ def delete_output_file(output_dir, rel="", archive_dir=None, state=None):
                 continue
             if not isinstance(info, dict) or info.get("source_rel") != rel_n:
                 continue
-            try:
-                shutil.rmtree(str(fp.parent))
-                removed += 1
-            except Exception:
-                pass
+            # v1.3.0: 连带的归档条目也移入回收站(不再直接 rmtree)
+            run_dir = fp.parent
+            it = [{"name": run_dir.name,
+                   "orig_rel": run_dir.relative_to(arch).as_posix(),
+                   "size": _audit_dir_stats(run_dir), "kind_detail": "archive-run"}]
+            b2 = _trash_new_batch(archive_dir, "run", it)
+            _trash_move_one(run_dir, _trash_root(archive_dir) / b2 / run_dir.name)
+            removed += 1
     if state is not None:
         state.pop(rel_n, None)
         if archive_dir:
@@ -1655,7 +1895,7 @@ def delete_output_file(output_dir, rel="", archive_dir=None, state=None):
                 save_state(archive_dir, state)
             except Exception:
                 pass
-    return {"ok": True, "rel": rel_n, "archives_removed": removed}
+    return {"ok": True, "rel": rel_n, "archives_removed": removed, "trash": batch}
 
 
 def move_output(output_dir, rels, dest_rel="", archive_dir=None, state=None):

@@ -5,6 +5,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 > 本文件记录 **ComfyUI-AssetManager** 的所有重要改动，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.3.0] - 2026-11-11
+
+### Added · 新增
+
+- **Trash view — deleting is now reversible.** All three delete paths (grid/calendar preview "delete from disk", folder-view file delete, folder-view folder delete) now move things into a trash folder under the archive library (`_trash/<timestamp>_<n>/`, with a manifest recording original paths) instead of wiping them. A new `回收站` button opens the trash view: every batch shows its time, kind, item count and disk usage, with `恢复` (restore to the original location) and `彻底删除` (permanent delete, confirmed) per batch, plus `清空回收站` for everything (double-confirmed). Deleting an asset still takes both its archive copy and the original output file — but now into the same batch, so restoring puts both back.<br>
+  **回收站 —— 删除从此可回滚。** 三条删除路径（网格/日历预览「从硬盘删除」、文件夹视图删文件、删文件夹）统一改为移入归档库下的回收站（`_trash/<时间戳>_<序号>/`，manifest 记录原始路径）。新增「回收站」按钮：每批显示时间/类型/件数/占用，可整批「恢复」（回原位）或「彻底删除」（二次确认），顶部「清空回收站」二次确认全清。删资产仍会同时移走归档副本与 output 原始文件——但进同一批次，恢复时一起回来。
+- Deleting no longer claims "cannot be undone": confirmation dialogs now say the items go to the trash and can be restored from there. Legacy callers that omit the archive directory keep the old direct-delete behavior (backwards compatible).<br>
+  删除确认框不再说"无法恢复"，改为"移入回收站，可在回收站恢复"。未传归档目录的旧调用保持原直接删除语义（向后兼容）。
+
 ## [1.2.9] - 2026-11-11
 
 ### Added · 新增

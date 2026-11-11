@@ -292,6 +292,18 @@ app.registerExtension({
       "output 文件已不存在": "output file no longer exists",
       "（无）": "(none)",
       "体检只读不改任何文件; 删除属后续版本。": "The audit is read-only and changes nothing; deletion comes in a later release.",
+      "回收站": "Trash",
+      "回收站为空": "Trash is empty",
+      "恢复": "Restore",
+      "彻底删除": "Delete permanently",
+      "清空回收站": "Empty trash",
+      "已移入回收站，可在回收站恢复": "Moved to trash — restore it from the Trash view",
+      "已恢复 N 项": "Restored N item(s)",
+      "已彻底删除": "Deleted permanently",
+      "恢复失败": "Restore failed",
+      "回收站加载失败": "Failed to load trash",
+      "确定要彻底删除该批次吗? 删除后无法恢复。": "Permanently delete this batch? This cannot be undone.",
+      "确定要清空回收站吗? 全部批次将永久删除, 无法恢复。": "Empty the trash? All batches will be permanently deleted. This cannot be undone.",
       "根": "Root",
       "下载": "Download",
       "（根目录不能改名）": "(the root folder cannot be renamed)",
@@ -605,6 +617,9 @@ app.registerExtension({
     // v1.2.9: 归档库体检(只读清单, 零删除) —— §6(C)-①
     const auditBtn = $el("button.asm-btn", { onclick: openAudit });
     bindText(auditBtn, "体检");
+    // v1.3.0: 回收站(统一软删除的恢复入口) —— §6(C)-②
+    const trashBtn = $el("button.asm-btn", { onclick: openTrash });
+    bindText(trashBtn, "回收站");
     // 工具栏共用排序下拉: 文件夹列表 / 文件夹网格 / 网格 runs / 日历当天列表 共用同一 sortMode
     const sortSel = $el("select.asm-sort");
     function fillSortSel() {
@@ -639,6 +654,7 @@ app.registerExtension({
       downloadBtn,
       scanBtn,
       auditBtn,
+      trashBtn,
       countEl,
     ]);
 
@@ -1207,7 +1223,7 @@ app.registerExtension({
       if (!selected.size) return;
       const ids = [...selected];
       const msg = LANG === "zh"
-        ? ("确定要从硬盘永久删除选中的 " + ids.length + " 项产物吗?\n\n将同时删除归档副本和 output 中的原始文件, 无法恢复。")
+        ? ("确定要删除选中的 " + ids.length + " 项产物吗?\n\n将同时移走归档副本和 output 中的原始文件。\n(v1.3.0 起移入回收站, 可在回收站恢复)")
         : ("Permanently delete the selected " + ids.length + " items from disk?\n\nThis also deletes the archive copies and the original files in output. This cannot be undone.");
       if (!confirm(msg)) return;
       const res = await fetch("./asset/delete_batch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ run_ids: ids }) });
@@ -1489,7 +1505,7 @@ app.registerExtension({
       if (!f) return;
       const archived = !!f.run_dir;
       const msg = LANG === "zh"
-        ? ("确定要从硬盘删除该文件吗?\n\n" + f.rel + (archived ? "\n\n将同时删除它的归档副本, 无法恢复。" : "\n\n无法恢复。"))
+        ? ("确定要删除该文件吗?\n\n" + f.rel + (archived ? "\n\n将同时移走它的归档副本。" : "") + "\n(v1.3.0 起移入回收站, 可在回收站恢复)")
         : ("Delete this file from disk?\n\n" + f.rel + (archived ? "\n\nIts archive copy will be deleted as well. This cannot be undone." : "\n\nThis cannot be undone."));
       if (!confirm(msg)) return;
       const d = await postJSON("./asset/delete_output_file", { path: f.rel });
@@ -1548,7 +1564,7 @@ app.registerExtension({
 
     async function doDelete(r, modal, onDone) {
       const msg = LANG === "zh"
-        ? ("确定要从硬盘永久删除该产物吗?\n\n" + r.name + "\n\n将同时删除归档副本和 output 中的原始文件, 无法恢复。")
+        ? ("确定要删除该产物吗?\n\n" + r.name + "\n\n将同时移走归档副本和 output 中的原始文件。\n(v1.3.0 起移入回收站, 可在回收站恢复)")
         : ("Permanently delete this asset from disk?\n\n" + r.name + "\n\nThis also deletes the archive copy and the original file in output. This cannot be undone.");
       if (!confirm(msg)) return;
       const res = await fetch("./asset/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ run_id: r.dir }) });
@@ -2174,6 +2190,89 @@ app.registerExtension({
       pn.appendChild($el("div.btns", { style: { marginTop: "10px" } }, [
         bindText($el("button.asm-btn", { onclick: () => m.remove() }), "关闭"),
       ]));
+      m.appendChild($el("div.bk", { onclick: () => m.remove() }));
+      m.appendChild(pn);
+      document.body.appendChild(m);
+    }
+
+    // ---------- v1.3.0 回收站(统一软删除) ----------
+    const TRASH_KIND_LABELS = {
+      "run": "归档条目",
+      "output_file": "文件",
+      "output_dir": "文件夹",
+    };
+    async function trashAct(body, url) {
+      try {
+        const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body) });
+        return await res.json();
+      } catch (e) { return { ok: false, error: e && e.message }; }
+    }
+    async function openTrash() {
+      let d;
+      try {
+        const res = await fetch("./asset/trash_list", { cache: "no-store" });
+        d = await res.json();
+      } catch (e) { d = { ok: false, error: e && e.message }; }
+      if (!d || !d.ok) { statusMsg(t("回收站加载失败") + " " + terr(d && d.error)); return; }
+      if (pv) closePreview();
+      const m = $el("div.asm-modal");
+      m.style.display = "flex";
+      const pn = $el("div.pn", { style: { maxHeight: "86vh", overflow: "auto", width: "min(720px, 92vw)" } });
+      pn.appendChild(bindText($el("h2", { style: { margin: "0 0 8px", fontSize: "15px" } }), "回收站"));
+      const listEl = $el("div", { style: { fontSize: "12px", lineHeight: "1.7" } });
+      const rebuild = (batches) => {
+        listEl.innerHTML = "";
+        const bs = batches || [];
+        if (!bs.length) {
+          listEl.appendChild($el("div", { textContent: t("回收站为空"),
+            style: { color: "var(--descrip-text,#999)", padding: "16px 0" } }));
+          return;
+        }
+        for (const b of bs) {
+          const row = $el("div", { style: { background: "var(--comfy-input-bg,#222)", borderRadius: "6px",
+            padding: "8px 10px", marginBottom: "8px" } });
+          row.appendChild($el("div", { textContent:
+            (b.when || "") + "  [" + t(TRASH_KIND_LABELS[b.kind] || b.kind) + "]  " +
+            b.count + "  " + t("占用") + " " + fmtBytes(b.bytes || 0) }));
+          const names = (b.items || []).map((x) => x.orig_rel || x.name).join(" | ");
+          if (names) row.appendChild($el("div", { textContent: names,
+            style: { color: "var(--descrip-text,#aaa)", wordBreak: "break-all", marginTop: "2px" } }));
+          const btns = $el("div", { style: { marginTop: "6px", display: "flex", gap: "6px" } });
+          btns.appendChild(bindText($el("button.asm-btn", { onclick: async () => {
+            const r = await trashAct({ batch: b.batch }, "./asset/trash_restore");
+            if (r && r.ok) {
+              statusMsg(t("已恢复 N 项").replace("N", String(r.restored || 0)));
+              m.remove(); await loadRuns(); refresh();
+            } else statusMsg(t("恢复失败") + " " + terr(r && r.error));
+          } }), "恢复"));
+          btns.appendChild(bindText($el("button.asm-btn.danger", { onclick: async () => {
+            if (!confirm(t("确定要彻底删除该批次吗? 删除后无法恢复。"))) return;
+            const r = await trashAct({ batch: b.batch }, "./asset/trash_purge");
+            if (r && r.ok) { statusMsg(t("已彻底删除")); m.remove(); openTrash(); }
+            else statusMsg(t("删除失败: ") + terr(r && r.error));
+          } }), "彻底删除"));
+          row.appendChild(btns);
+          listEl.appendChild(row);
+        }
+      };
+      rebuild(d.batches);
+      pn.appendChild(listEl);
+      const foot = $el("div.btns", { style: { marginTop: "10px", display: "flex", gap: "6px" } });
+      foot.appendChild(bindText($el("button.asm-btn.danger", { onclick: async () => {
+        const bs = d.batches || [];
+        if (!bs.length) return;
+        if (!confirm(t("确定要清空回收站吗? 全部批次将永久删除, 无法恢复。"))) return;
+        let okN = 0;
+        for (const b of bs) {
+          const r = await trashAct({ batch: b.batch }, "./asset/trash_purge");
+          if (r && r.ok) okN++;
+        }
+        statusMsg(t("已彻底删除") + " (" + okN + "/" + bs.length + ")");
+        m.remove(); openTrash();
+      } }), "清空回收站"));
+      foot.appendChild(bindText($el("button.asm-btn", { onclick: () => m.remove() }), "关闭"));
+      pn.appendChild(foot);
       m.appendChild($el("div.bk", { onclick: () => m.remove() }));
       m.appendChild(pn);
       document.body.appendChild(m);
