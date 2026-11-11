@@ -1317,6 +1317,83 @@ def repair_archive(archive_dir, output_dir, state, skip_source_prefixes=None):
             "marked": marked, "details": details[:50]}
 
 
+# ---------------------------------------------------------------------------
+# v1.3.3: 清理旧产物(§6(C)-⑤) —— 按天数出可勾选清单, 确认后整条目移入回收站
+# ---------------------------------------------------------------------------
+
+def cleanup_candidates(archive_dir, max_age_days):
+    """按"归档时间早于 max_age_days 天"列出候选条目(只读, 不删)。
+
+    判据用 info.json 的 generated_at(产物生成时间), 缺失时退回 archived_at。
+    -> {"ok": True, "max_age_days": N, "count": M, "bytes": B,
+        "items": [{"dir", "source_rel", "generated_at", "bytes"}...]}  (旧→新)
+    """
+    arch = Path(archive_dir)
+    if not arch.is_dir():
+        return {"ok": False, "error": "Directory not found"}
+    try:
+        days = float(max_age_days)
+    except Exception:
+        return {"ok": False, "error": "Invalid max_age_days"}
+    if days <= 0:
+        return {"ok": False, "error": "Invalid max_age_days"}
+    cutoff = time.time() - days * 86400.0
+    items = []
+    for date_dir in sorted(arch.iterdir()):
+        if not date_dir.is_dir() or date_dir.name == TRASH_DIR_NAME:
+            continue
+        for run_dir in sorted(date_dir.iterdir()):
+            if not run_dir.is_dir():
+                continue
+            info_file = run_dir / "info.json"
+            if not info_file.is_file():
+                continue
+            try:
+                info = json.loads(info_file.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if not isinstance(info, dict):
+                continue
+            ts_text = info.get("generated_at") or info.get("archived_at") or ""
+            try:
+                when = datetime.fromisoformat(str(ts_text)).timestamp()
+            except Exception:
+                continue
+            if when > cutoff:
+                continue
+            items.append({
+                "dir": run_dir.relative_to(arch).as_posix(),
+                "source_rel": info.get("source_rel") or "",
+                "generated_at": ts_text,
+                "bytes": _audit_dir_stats(run_dir),
+            })
+    return {"ok": True, "max_age_days": days, "count": len(items),
+            "bytes": sum(i["bytes"] for i in items), "items": items}
+
+
+def cleanup_execute(archive_dir, output_dir, state, dirs, skip_source_prefixes=None):
+    """把勾选的归档条目(逐个 run_rel)移入回收站; 其 output 源文件一并移入同批。
+
+    dirs: [run_rel, ...]; 逐条走 delete_run 的批次逻辑(与手动删除同一安全语义)。
+    -> {"ok": True, "cleaned": n, "failed": [run_rel...], "trash": <最后批次名|None>}
+    """
+    if not isinstance(dirs, list):
+        return {"ok": False, "error": "dirs must be an array"}
+    cleaned, failed = 0, []
+    last_batch = None
+    for rd in dirs:
+        if not isinstance(rd, str) or not rd.strip():
+            failed.append(rd)
+            continue
+        r = delete_run(archive_dir, output_dir, state, rd)
+        if r.get("ok"):
+            cleaned += 1
+            last_batch = r.get("trash")
+        else:
+            failed.append(rd)
+    return {"ok": not failed, "cleaned": cleaned, "failed": failed, "trash": last_batch}
+
+
 
 def _err_brief(exc):
     """异常摘要(英文短句, 不含本地化系统消息)"""

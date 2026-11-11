@@ -313,6 +313,15 @@ app.registerExtension({
       "已重建": "rebuilt",
       "已标孤立": "marked orphaned",
       "已取消下载": "Download cancelled",
+      "清理旧产物": "Cleanup old",
+      "清理候选(早于 N 天)": "Cleanup candidates (older than N days)",
+      "天数": "days",
+      "出清单": "List",
+      "清理中…": "Cleaning…",
+      "清理失败": "Cleanup failed",
+      "已移入回收站 N 条": "Moved N item(s) to trash",
+      "全选": "Select all",
+      "确认清理所选 N 条? 将连同 output 源文件一起移入回收站(可恢复)。": "Clean the selected N item(s)? Their output files move to trash together (restorable).",
       "确定要彻底删除该批次吗? 删除后无法恢复。": "Permanently delete this batch? This cannot be undone.",
       "确定要清空回收站吗? 全部批次将永久删除, 无法恢复。": "Empty the trash? All batches will be permanently deleted. This cannot be undone.",
       "根": "Root",
@@ -428,6 +437,30 @@ app.registerExtension({
     let flatTree = [];                                          // 已排序 + 已扁平化的树列表(↑/↓ 用)
     let treeRowEls = {};                                        // rel -> 树行元素
     let treeCurEl = null;                                       // 当前高亮的树行
+
+    // ---------- v1.3.3: 记忆面板状态(§6(C)-⑤) —— localStorage am_panel_state ----------
+    const PANEL_STATE_KEY = "am_panel_state";
+    function savePanelState() {
+      try {
+        const fSide = document.querySelector(".asm-fside");
+        const fMain = document.querySelector(".asm-fmain");
+        const body = document.querySelector(".asm-body");
+        localStorage.setItem(PANEL_STATE_KEY, JSON.stringify({
+          view, kind, folderPath,
+          fSideScroll: fSide ? fSide.scrollTop : 0,
+          fMainScroll: fMain ? fMain.scrollTop : 0,
+          bodyScroll: body ? body.scrollTop : 0,
+        }));
+      } catch (e) {}
+    }
+    function loadPanelState() {
+      try {
+        const raw = localStorage.getItem(PANEL_STATE_KEY);
+        if (!raw) return null;
+        const s = JSON.parse(raw);
+        return (s && typeof s === "object") ? s : null;
+      } catch (e) { return null; }
+    }
 
     const byDate = {};
     function rebuildByDate() {
@@ -599,6 +632,7 @@ app.registerExtension({
         if (prev === "folder" || v === "folder") { selected.clear(); selAnchor = null; selFolders.clear(); folAnchor = null; }
         refresh();
         if (v === "folder") { loadFolderTree(); loadFolder(folderPath); }
+        savePanelState();
       };
       viewBtns[v] = b;
       return b;
@@ -607,7 +641,7 @@ app.registerExtension({
     function mkKindBtn(zh, k) {
       const b = $el("button.asm-btn" + (kind === k ? ".on" : ""));
       bindText(b, zh);
-      b.onclick = () => { kind = k; Object.values(kindBtns).forEach(x => x.classList.remove("on")); b.classList.add("on"); refresh(); };
+      b.onclick = () => { kind = k; Object.values(kindBtns).forEach(x => x.classList.remove("on")); b.classList.add("on"); refresh(); savePanelState(); };
       kindBtns[k] = b;
       return b;
     }
@@ -634,6 +668,9 @@ app.registerExtension({
     // v1.3.1: 归档修复(对齐/重建/标孤立, 不删文件) —— §6(C)-③
     const repairBtn = $el("button.asm-btn", { onclick: doRepair });
     bindText(repairBtn, "修复");
+    // v1.3.3: 清理旧产物(按天数出可勾选清单 → 确认后移入回收站) —— §6(C)-⑤
+    const cleanupBtn = $el("button.asm-btn", { onclick: openCleanup });
+    bindText(cleanupBtn, "清理旧产物");
     // 工具栏共用排序下拉: 文件夹列表 / 文件夹网格 / 网格 runs / 日历当天列表 共用同一 sortMode
     const sortSel = $el("select.asm-sort");
     function fillSortSel() {
@@ -670,6 +707,7 @@ app.registerExtension({
       auditBtn,
       trashBtn,
       repairBtn,
+      cleanupBtn,
       countEl,
     ]);
 
@@ -874,6 +912,7 @@ app.registerExtension({
     function goToFolder(rel, scroll) {
       enterFolder(rel || "");
       updateTreeHighlight(scroll !== false);
+      savePanelState();
     }
     // v1.2.2: 树行点击 —— 多选关 → 进入该文件夹; 多选开(或 Shift) → 勾选该文件夹(与文件选中互斥)
     function pickFolder(rel, ev) {
@@ -2379,6 +2418,82 @@ app.registerExtension({
       await loadRuns(); refresh();
     }
 
+    // ---------- v1.3.3 清理旧产物(可勾选清单 → 确认后移入回收站) ----------
+    async function openCleanup() {
+      const rawDays = prompt(LANG === "zh"
+        ? "清理多少天之前的旧产物? (数字, 例如 30; 产出只读候选清单, 不会直接删)"
+        : "Clean up items older than how many days? (number, e.g. 30; produces a read-only candidate list)");
+      if (rawDays === null) return;
+      const days = parseFloat(String(rawDays).trim());
+      if (!isFinite(days) || days <= 0) { statusMsg(t("天数") + " > 0 ?"); return; }
+      statusMsg(t("体检中…"));
+      let d;
+      try {
+        const res = await fetch("./asset/cleanup_candidates?days=" + encodeURIComponent(days), { cache: "no-store" });
+        d = await res.json();
+      } catch (e) { d = { ok: false, error: e && e.message }; }
+      if (!d || !d.ok) { statusMsg(t("清理失败") + " " + terr(d && d.error)); return; }
+      statusMsg(t("归档库体检"));
+      if (pv) closePreview();
+      const m = $el("div.asm-modal");
+      m.style.display = "flex";
+      const pn = $el("div.pn", { style: { maxHeight: "86vh", overflow: "auto", width: "min(760px, 92vw)" } });
+      pn.appendChild(bindText($el("h2", { style: { margin: "0 0 6px", fontSize: "15px" } }),
+        "清理候选(早于 N 天)".replace("N", String(days))));
+      const head = $el("div", { style: { fontSize: "12px", color: "var(--descrip-text,#aaa)", marginBottom: "8px" } });
+      head.textContent = (d.count || 0) + "  ·  " + t("占用") + " " + fmtBytes(d.bytes || 0);
+      pn.appendChild(head);
+      const listEl = $el("div", { style: { fontSize: "12px", lineHeight: "1.8", maxHeight: "46vh", overflow: "auto",
+        background: "var(--comfy-input-bg,#222)", borderRadius: "6px", padding: "8px 10px" } });
+      const checks = [];
+      if (!(d.items || []).length) {
+        listEl.textContent = t("（无）");
+      }
+      for (const it of (d.items || [])) {
+        const row = $el("label", { style: { display: "block", cursor: "pointer" } });
+        const cb = $el("input", { type: "checkbox" });
+        cb.value = it.dir;
+        checks.push(cb);
+        row.appendChild(cb);
+        row.appendChild($el("span", { textContent: "  " + it.dir + "  " + fmtBytes(it.bytes || 0) +
+          "  " + (it.generated_at || "") }));
+        listEl.appendChild(row);
+      }
+      pn.appendChild(listEl);
+      const btns = $el("div.btns", { style: { marginTop: "10px", display: "flex", gap: "6px", flexWrap: "wrap" } });
+      if ((d.items || []).length) {
+        btns.appendChild(bindText($el("button.asm-btn", { onclick: () => {
+          const all = checks.every((c) => c.checked);
+          checks.forEach((c) => { c.checked = !all; });
+        } }), "全选"));
+        btns.appendChild(bindText($el("button.asm-btn.danger", { onclick: async () => {
+          const picked = checks.filter((c) => c.checked).map((c) => c.value);
+          if (!picked.length) { statusMsg(t("（无）")); return; }
+          const msg = LANG === "zh"
+            ? ("确认清理所选 " + picked.length + " 条? 将连同 output 源文件一起移入回收站(可恢复)。")
+            : ("Confirm cleanup of " + picked.length + " item(s)? Their output files move to trash together (restorable).");
+          if (!confirm(msg)) return;
+          statusMsg(t("清理中…"));
+          let r;
+          try {
+            const res = await fetch("./asset/cleanup_execute", { method: "POST",
+              headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dirs: picked }) });
+            r = await res.json();
+          } catch (e) { r = { ok: false, error: e && e.message }; }
+          if (r && r.ok) {
+            statusMsg(t("已移入回收站 N 条").replace("N", String(r.cleaned || 0)));
+            m.remove();
+            await loadRuns(); refresh();
+          } else statusMsg(t("清理失败") + " " + terr(r && r.error));
+        } }), "🗑 删除选中"));
+      }
+      btns.appendChild(bindText($el("button.asm-btn", { onclick: () => m.remove() }), "关闭"));
+      pn.appendChild(btns);
+      m.appendChild($el("div.bk", { onclick: () => m.remove() }));
+      m.appendChild(pn);
+      document.body.appendChild(m);
+    }
+
     function statusMsg(s) { status.textContent = s; }
 
     // ---------- 打开/关闭 ----------
@@ -2396,6 +2511,17 @@ app.registerExtension({
       overlay.style.display = "flex";
       statusMsg(t("加载中…"));
       fixLinkRenderMode();
+      // v1.3.3: 恢复上次的 view/kind/folderPath(§6(C)-⑤ 记忆面板状态)
+      const ps = loadPanelState();
+      if (ps) {
+        if (ps.view && viewBtns[ps.view]) view = ps.view;
+        if (ps.kind && kindBtns[ps.kind]) kind = ps.kind;
+        if (typeof ps.folderPath === "string") folderPath = ps.folderPath;
+        Object.values(viewBtns).forEach(x => x.classList.remove("on"));
+        if (viewBtns[view]) viewBtns[view].classList.add("on");
+        Object.values(kindBtns).forEach(x => x.classList.remove("on"));
+        if (kindBtns[kind]) kindBtns[kind].classList.add("on");
+      }
       await loadRuns();
       if (runs.length) {
         const d = runs[0].date;
@@ -2403,6 +2529,17 @@ app.registerExtension({
       }
       refresh();
       if (view === "folder") { await loadFolderTree(); await loadFolder(folderPath); }
+      // 恢复滚动位置(渲染后)
+      if (ps) {
+        try {
+          const fSide = document.querySelector(".asm-fside");
+          const fMain = document.querySelector(".asm-fmain");
+          const bodyEl = document.querySelector(".asm-body");
+          if (fSide && ps.fSideScroll) fSide.scrollTop = ps.fSideScroll;
+          if (fMain && ps.fMainScroll) fMain.scrollTop = ps.fMainScroll;
+          if (bodyEl && ps.bodyScroll) bodyEl.scrollTop = ps.bodyScroll;
+        } catch (e) {}
+      }
       statusMsg(t("共 ") + runs.length + t(" 条资产"));
       if (pollTimer) clearInterval(pollTimer);
       pollTimer = setInterval(pollRefresh, 8000);

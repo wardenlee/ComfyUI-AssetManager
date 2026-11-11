@@ -20,7 +20,7 @@ WEB_DIRECTORY = "web"
 NODE_CLASS_MAPPINGS = {}
 NODE_DISPLAY_NAME_MAPPINGS = {}
 
-__version__ = "1.3.2"
+__version__ = "1.3.3"
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _cfg = assets_core.load_config(BASE_DIR)
@@ -506,6 +506,44 @@ async def asset_repair(request):
         with _LOCK:
             return assets_core.repair_archive(_arch, _current_output_dir(), _state,
                                               _skip_source_prefixes())
+
+    try:
+        result = await asyncio.to_thread(_go)
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)})
+    return web.json_response(result)
+
+
+@PromptServer.instance.routes.get("/asset/cleanup_candidates")
+async def asset_cleanup_candidates(request):
+    """v1.3.3 清理旧产物: 按天数列出候选(只读清单, 不删)"""
+    try:
+        days = float(request.rel_url.query.get("days", "0") or 0)
+    except Exception:
+        days = 0.0
+
+    def _go():
+        return assets_core.cleanup_candidates(_arch, days)
+
+    try:
+        result = await asyncio.to_thread(_go)
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)})
+    return web.json_response(result)
+
+
+@PromptServer.instance.routes.post("/asset/cleanup_execute")
+async def asset_cleanup_execute(request):
+    """v1.3.3 清理旧产物: 勾选的条目移入回收站(output 源文件同批)"""
+    body = await _json_body(request)
+    dirs = body.get("dirs") or []
+    if not isinstance(dirs, list):
+        return web.json_response({"ok": False, "error": "dirs must be an array"})
+
+    def _go():
+        with _LOCK:
+            return assets_core.cleanup_execute(_arch, _current_output_dir(), _state, dirs,
+                                               _skip_source_prefixes())
 
     try:
         result = await asyncio.to_thread(_go)

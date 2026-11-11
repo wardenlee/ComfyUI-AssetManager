@@ -40,6 +40,8 @@ An in-panel **asset manager** for ComfyUI that auto-archives every image/video y
   **归档状态与修复** —— 文件夹视图给从未归档的文件打 `未归档` 角标；扫描状态栏汇总 `新增 N / 跳过 M 残留 / K 条归档失效`；「修复」按钮把归档条目重新对齐到改名/移动后的源文件、重建缺失 `info.json`、标记孤立条目——只读安全，绝不删除。
 - **Download progress & cancel** — large downloads show a live percentage bar with a `取消` button; canceling is not an error ("已取消下载").<br>
   **下载进度与取消** —— 大文件下载显示实时百分比进度条与「取消」按钮；取消不算失败（"已取消下载"）。
+- **The panel remembers your place & cleans old assets** — view, filter, folder and scroll positions are restored on reopen; `清理旧产物` lists entries older than N days (read-only checklist) and moves your selection — with its output files — into the trash after confirmation.<br>
+  **面板记住位置 & 清理旧产物** —— 视图/筛选/文件夹/滚动位置重开自动恢复；「清理旧产物」按天数列出只读候选清单，确认后把所选条目连同 output 源文件移入回收站。
 - **Preview & reproduce** — view full-size images / play videos, copy prompt, download the file itself (the original output file in the folder view, the archived media copy in the grid/calendar views).<br>
   **预览与复现** — 点开看大图/播视频、复制提示词、下载文件本体（文件夹视图里是 output 的原始文件，网格/日历里是归档库中的媒体副本）。
 - **Preview navigation** — inside the large-image preview press `←` / `→` (or the on-screen arrows) to flip through the current batch without closing it; wraps around, shows `n / total`, `Esc` closes, adjacent images are preloaded. The preview dialog is now as tall as the main panel and ~30% wider; the arrows sit outside the image, close to the panel edges.<br>

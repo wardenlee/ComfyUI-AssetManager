@@ -5,6 +5,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 > 本文件记录 **ComfyUI-AssetManager** 的所有重要改动，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.3.3] - 2026-11-11
+
+### Added · 新增
+
+- **The panel remembers where you were.** Current view, image/video filter, folder-view path and the scroll positions of both panels are saved locally and restored the next time you open the panel (corrupt state silently falls back to defaults).<br>
+  **面板记住你的位置。** 当前视图、图片/视频筛选、文件夹视图所在目录与两栏滚动位置都会本地保存，下次打开面板自动恢复（损坏的状态静默回退默认）。
+- **Cleanup old assets.** A new no-icon `清理旧产物` button asks for a day threshold, then shows a **read-only candidate list** (entries whose generated time is older — with per-item and total disk usage), where you tick what to clean and confirm. Confirmed items move into the trash together with their output source files (restorable, same safety as manual delete). Nothing is deleted without the list + confirm.<br>
+  **清理旧产物。** 新增无图标「清理旧产物」按钮：输入天数阈值 → 显示**只读候选清单**（生成时间早于阈值的条目，含单项与合计占用）→ 勾选并确认。确认后所选条目连同 output 源文件一起移入回收站（可恢复，与手动删除同一安全语义）。没有清单+确认绝不删除。
+
 ## [1.3.2] - 2026-11-11
 
 ### Added · 新增
