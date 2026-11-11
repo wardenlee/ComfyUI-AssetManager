@@ -418,9 +418,9 @@ def archive_file(rel, src, archive_dir, state, cfg):
         lines += ["", "=== 负向提示词 ===", parsed["negative"]]
     (run_dir / "prompt.txt").write_text("\n".join(lines), encoding="utf-8")
 
-    if workflow_graph:
-        (run_dir / "workflow.json").write_text(
-            json.dumps(workflow_graph, ensure_ascii=False, indent=1), encoding="utf-8")
+    # v1.2.8: 不再落 workflow.json 散落文件 —— 内嵌元数据已携带工作流(云端对拍 1/1 逐键一致),
+    # 预览里可按需从 info.json 的 workflow_json 重组下载; 存量条目磁盘上的 workflow.json 原样保留。
+    # has_workflow 仍表示"内嵌工作流元数据存在"(= 可恢复), 与磁盘文件无关。
 
     state[rel] = state_key
     return {"run": run_dir.name, "dir": run_dir.relative_to(arch).as_posix(), "kind": kind}

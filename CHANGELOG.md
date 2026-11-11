@@ -5,6 +5,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 > 本文件记录 **ComfyUI-AssetManager** 的所有重要改动，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.2.8] - 2026-11-11
+
+### Changed · 改动
+
+- **The archive no longer writes a `workflow.json` file per entry.** The workflow is already embedded in every PNG/MP4 (verified on real data: the embedded metadata and the archived `workflow.json` compared key-by-key and matched), so the loose file added nothing — and its filename made pairing awkward. Existing entries keep their `workflow.json` on disk untouched; new entries simply don't get one. Nothing is lost: the full workflow stays inside each entry's `info.json` (`workflow_json`) and the PNG/MP4 itself.<br>
+  **归档不再为每个条目写 `workflow.json` 散落文件。** 工作流本就内嵌在每个 PNG/MP4 里（真机对拍：内嵌元数据与归档 `workflow.json` 逐键一致），散落文件没有增量价值、文件名还难以配对。存量条目的 `workflow.json` 原样保留；新条目不再生成。数据不丢：完整工作流仍保存在每条的 `info.json`（`workflow_json` 字段）与 PNG/MP4 本体里。
+- **The previews gain a `保存 workflow.json` button.** Grid/calendar and folder previews can now reassemble and download the workflow from the entry's `info.json` on demand, named `<媒体名>.workflow.json` so it always pairs with its asset (disabled for files that were never archived). This is the replacement for the loose file — the UI never offers a raw scattered `workflow.json`, but the workflow is always one click away.<br>
+  **两个预览弹窗新增「保存 workflow.json」按钮。** 网格/日历与文件夹视图的预览可随时从归档 `info.json` 重组下载工作流，文件名为 `<媒体名>.workflow.json`、永远和资产配对（未归档的文件该按钮置灰）。这就是散落文件的替代品——界面不再提供散落的 `workflow.json`，但工作流永远一键可取。
+
 ## [1.2.7] - 2026-11-11
 
 ### Fixed · 修复

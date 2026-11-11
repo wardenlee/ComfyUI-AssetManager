@@ -271,6 +271,9 @@ app.registerExtension({
       "可用「下载文件」保存后用本地播放器打开": "Use Download file to save it, then open it with a local player",
       "该产物未携带媒体文件": "This asset has no media file",
       "该文件不支持预览，可用「下载文件」保存": "Preview is not supported for this file — use Download file to save it",
+      "保存 workflow.json": "Save workflow.json",
+      "该产物未携带工作流元数据": "This asset has no workflow metadata",
+      "✅ 已保存 workflow.json": "✅ workflow.json saved",
       "根": "Root",
       "下载": "Download",
       "（根目录不能改名）": "(the root folder cannot be renamed)",
@@ -1294,6 +1297,13 @@ app.registerExtension({
 
       const copyBtn = bindText($el("button.asm-btn", { onclick: () => { ta.select(); navigator.clipboard?.writeText(ta.value).then(() => statusMsg(t("已复制"))); } }), "复制提示词");
       const dlBtn = bindText($el("button.asm-btn.primary", { onclick: () => downloadMediaFile(list[idx]) }), "下载文件");
+      // v1.2.8: 工作流不落散落文件, 需要时从 info.json 重组下载
+      const wfBtn = bindText($el("button.asm-btn", { onclick: async () => {
+        const cur = list[idx];
+        if (!cur || !cur.dir) return;
+        const info = await fetchRunInfo(cur.dir);
+        await saveWorkflowJson(info, cur.media);
+      } }), "保存 workflow.json");
       const delBtn = bindText($el("button.asm-btn.danger"), "🗑 从硬盘删除");
 
       const mediaWrap = $el("div.mediaWrap", {}, [mediaBox, prevBtn, nextBtn]);
@@ -1304,7 +1314,7 @@ app.registerExtension({
         rowsEl,
         bindText($el("label", { style: { fontSize: "12px" } }), "提示词"),
         ta,
-        $el("div.btns", {}, [copyBtn, dlBtn, delBtn]),
+        $el("div.btns", {}, [copyBtn, dlBtn, wfBtn, delBtn]),
       ]);
       m.appendChild($el("div.bk", { onclick: () => closePreview() }));
       m.appendChild(pn);
@@ -1379,6 +1389,8 @@ app.registerExtension({
         // v1.2.3: 已归档的文件可复制提示词; v1.2.6: 「下载文件」对任何文件都可用
         ta.value = "";
         copyBtn.disabled = true;
+        // v1.2.8: 未归档的文件没有 info.json, 无工作流可重组
+        wfBtn.disabled = !cur.run_dir;
         if (!cur.run_dir) {
           bindText(ta, "该文件未归档，没有提示词元数据", "placeholder");
           return;
@@ -1397,6 +1409,13 @@ app.registerExtension({
       bindText(ta, "提示词", "placeholder");
       const copyBtn = bindText($el("button.asm-btn", { onclick: () => { ta.select(); navigator.clipboard?.writeText(ta.value).then(() => statusMsg(t("已复制"))); } }), "复制提示词");
       const dlBtn = bindText($el("button.asm-btn.primary", { onclick: () => downloadOutputFile(list[idx]) }), "下载文件");
+      // v1.2.8: 工作流不落散落文件, 需要时从归档 info.json 重组下载(未归档的文件禁用)
+      const wfBtn = bindText($el("button.asm-btn", { onclick: async () => {
+        const cur = list[idx];
+        if (!cur || !cur.run_dir) return;
+        const info = await fetchRunInfo(cur.run_dir);
+        await saveWorkflowJson(info, cur.name);
+      } }), "保存 workflow.json");
       const delBtn = bindText($el("button.asm-btn.danger", { onclick: () => deleteOutputFile(list[idx]) }), "🗑 从硬盘删除");
       const mediaWrap = $el("div.mediaWrap", {}, [mediaBox, prevBtn, nextBtn]);
       const pn = $el("div.pn", {}, [
@@ -1406,7 +1425,7 @@ app.registerExtension({
         rowsEl,
         bindText($el("label", { style: { fontSize: "12px" } }), "提示词"),
         ta,
-        $el("div.btns", {}, [copyBtn, dlBtn, delBtn,
+        $el("div.btns", {}, [copyBtn, dlBtn, wfBtn, delBtn,
           bindText($el("button.asm-btn", { onclick: () => closePreview() }), "关闭"),
         ]),
       ]);
@@ -1485,6 +1504,21 @@ app.registerExtension({
         statusMsg(mode === "dir" && dlDirHandle && dlDirHandle.name
           ? (LANG === "zh" ? ("✅ 已保存 " + safeName(r.media) + " → 本地目录: " + dlDirHandle.name) : ("✅ Saved " + safeName(r.media) + " → local folder: " + dlDirHandle.name))
           : (LANG === "zh" ? ("✅ 已开始下载: " + safeName(r.media)) : ("✅ Download started: " + safeName(r.media))));
+      } catch (e) {
+        statusMsg(t("下载失败") + (e && e.message ? "  " + e.message : ""));
+      }
+    }
+
+    // v1.2.8: 「保存 workflow.json」—— 从归档 info.json 的 workflow_json 字段重组下载(不再依赖磁盘散落文件)。
+    // 文件名 = <媒体名>.workflow.json, 解决"工作流文件难以直观配对"的原始痛点。
+    async function saveWorkflowJson(info, mediaName) {
+      const wf = info && info.workflow_json;
+      if (!wf || typeof wf !== "object") { statusMsg(t("该产物未携带工作流元数据")); return; }
+      const base = safeName(mediaName || "workflow").replace(/\.[^.]+$/, "");
+      const blob = new Blob([JSON.stringify(wf, null, 1)], { type: "application/json" });
+      try {
+        await saveBlobToLocal(blob, base + ".workflow.json");
+        statusMsg(t("✅ 已保存 workflow.json"));
       } catch (e) {
         statusMsg(t("下载失败") + (e && e.message ? "  " + e.message : ""));
       }

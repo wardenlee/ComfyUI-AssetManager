@@ -30,6 +30,8 @@ An in-panel **asset manager** for ComfyUI that auto-archives every image/video y
   **搜索与过滤** — 按提示词/模型/文件名/日期全文搜索，按图片/视频过滤。
 - **Junk and half-written files never pollute the library.** Partial-download suffixes (`.part` / `.tmp` / `.crdownload` / `.download`) and 0-byte media files are skipped by the scanner and hidden from every list, the folder tree and folder downloads; broken archive entries (media deleted or 0-byte) stay out of the grid and calendar. Files that don't support previewing show a hint instead of an empty dialog, and the folder-view paging sequence contains only previewable media.<br>
   **垃圾与半成品文件不会污染资产库。** 半成品后缀（`.part` / `.tmp` / `.crdownload` / `.download`）与 0 字节媒体文件被扫描器跳过，不出现在任何列表/左栏树/文件夹下载里；媒体缺失或 0 字节的坏归档条目不进网格/日历。无法预览的文件点击时只给提示、不弹空窗；文件夹视图翻页序列只含可预览媒体。
+- **Workflow is always one click away, without loose files.** The archive no longer drops a `workflow.json` next to every asset (the workflow is already embedded in the PNG/MP4 — verified by key-by-key comparison on real data); the preview's `保存 workflow.json` button reassembles it from the entry's `info.json` on demand, saved as `<媒体名>.workflow.json` so it always pairs with the asset. Existing entries keep their old files untouched.<br>
+  **工作流一键可取，不再有散落文件。** 归档不再在每个资产旁写 `workflow.json`（工作流本就内嵌在 PNG/MP4 里——真机逐键对拍验证过）；预览的「保存 workflow.json」按钮按需从条目 `info.json` 重组下载，存为 `<媒体名>.workflow.json`、永远与资产配对。存量条目的旧文件原样保留。
 - **Preview & reproduce** — view full-size images / play videos, copy prompt, download the file itself (the original output file in the folder view, the archived media copy in the grid/calendar views).<br>
   **预览与复现** — 点开看大图/播视频、复制提示词、下载文件本体（文件夹视图里是 output 的原始文件，网格/日历里是归档库中的媒体副本）。
 - **Preview navigation** — inside the large-image preview press `←` / `→` (or the on-screen arrows) to flip through the current batch without closing it; wraps around, shows `n / total`, `Esc` closes, adjacent images are preloaded. The preview dialog is now as tall as the main panel and ~30% wider; the arrows sit outside the image, close to the panel edges.<br>
@@ -131,10 +133,10 @@ A `config.json` is generated on your first settings save (template at [`config.e
 <archive dir>/
 └─ 2026-08-12/
    └─ 110358_ComfyUI_00016/
-      ├─ ComfyUI_00016_.png       # original asset / 原产物
+      ├─ ComfyUI_00016_.png       # original asset (workflow embedded inside) / 原产物(内嵌工作流)
       ├─ info.json                # full info (prompt/params/models/workflow) / 完整信息(提示词/参数/模型/工作流)
       ├─ prompt.txt               # human-readable prompt / 人类可读提示词
-      ├─ workflow.json            # drag back into ComfyUI to rerun / 拖回 ComfyUI 复跑
+      ├─ workflow.json            # v1.2.7 and earlier only; preview can save it on demand now / 仅 v1.2.7 及更早条目；新版预览可按需重组下载
       └─ thumb.jpg                # thumbnail (first frame for videos) / 缩略图(视频取首帧)
 ```
 
