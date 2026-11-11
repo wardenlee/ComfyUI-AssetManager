@@ -20,7 +20,7 @@ WEB_DIRECTORY = "web"
 NODE_CLASS_MAPPINGS = {}
 NODE_DISPLAY_NAME_MAPPINGS = {}
 
-__version__ = "1.2.8"
+__version__ = "1.2.9"
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _cfg = assets_core.load_config(BASE_DIR)
@@ -125,6 +125,20 @@ async def asset_list(request):
 
     runs = await asyncio.to_thread(_go)
     return web.json_response({"ok": True, "count": len(runs), "runs": runs})
+
+
+@PromptServer.instance.routes.get("/asset/audit")
+async def asset_audit(request):
+    """v1.2.9 归档库体检: 只读清单(重复来源/不可预览/孤儿/同内容), 零删除。"""
+    def _go():
+        return assets_core.audit_archive(_arch, _current_output_dir(),
+                                         _skip_source_prefixes())
+
+    try:
+        result = await asyncio.to_thread(_go)
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)})
+    return web.json_response(result)
 
 
 # --- 输出目录: 文件夹视图 / 文件夹管理 / 剪切粘贴 (v1.2.0) --------------------

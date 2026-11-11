@@ -274,6 +274,24 @@ app.registerExtension({
       "保存 workflow.json": "Save workflow.json",
       "该产物未携带工作流元数据": "This asset has no workflow metadata",
       "✅ 已保存 workflow.json": "✅ workflow.json saved",
+      "体检": "Audit",
+      "归档库体检": "Archive audit",
+      "体检中…": "Auditing…",
+      "体检失败": "Audit failed",
+      "重复来源": "Duplicate sources",
+      "不可预览条目": "Non-previewable entries",
+      "孤儿条目": "Orphaned entries",
+      "同内容疑似重复": "Same-content suspects",
+      "条目": "entries",
+      "占用": "disk usage",
+      "最早": "oldest",
+      "最新": "newest",
+      "媒体缺失": "media missing",
+      "媒体 0 字节": "media is 0 bytes",
+      "容器不可播放": "unplayable container",
+      "output 文件已不存在": "output file no longer exists",
+      "（无）": "(none)",
+      "体检只读不改任何文件; 删除属后续版本。": "The audit is read-only and changes nothing; deletion comes in a later release.",
       "根": "Root",
       "下载": "Download",
       "（根目录不能改名）": "(the root folder cannot be renamed)",
@@ -584,6 +602,9 @@ app.registerExtension({
     bindText(downloadBtn, "⬇ 下载");
     const scanBtn = $el("button.asm-btn", { onclick: doScan });
     bindText(scanBtn, "⟳ 扫描");
+    // v1.2.9: 归档库体检(只读清单, 零删除) —— §6(C)-①
+    const auditBtn = $el("button.asm-btn", { onclick: openAudit });
+    bindText(auditBtn, "体检");
     // 工具栏共用排序下拉: 文件夹列表 / 文件夹网格 / 网格 runs / 日历当天列表 共用同一 sortMode
     const sortSel = $el("select.asm-sort");
     function fillSortSel() {
@@ -617,6 +638,7 @@ app.registerExtension({
       settingsBtn,
       downloadBtn,
       scanBtn,
+      auditBtn,
       countEl,
     ]);
 
@@ -2078,6 +2100,83 @@ app.registerExtension({
       const d = await res.json();
       statusMsg(d.ok ? (LANG === "zh" ? ("扫描完成, 新增 " + d.new + " 条") : ("Scan done, " + d.new + " new")) : t("扫描失败"));
       await loadRuns(); refresh();
+    }
+
+    // ---------- v1.2.9 归档库体检(只读, 零删除) ----------
+    function fmtBytes(n) {
+      if (!n && n !== 0) return "—";
+      if (n < 1024) return n + " B";
+      if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+      if (n < 1024 * 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + " MB";
+      return (n / (1024 * 1024 * 1024)).toFixed(2) + " GB";
+    }
+    const AUDIT_REASON_LABELS = {
+      "media-missing": "媒体缺失",
+      "media-zero-byte": "媒体 0 字节",
+      "unplayable-container": "容器不可播放",
+      "output-missing": "output 文件已不存在",
+    };
+    function auditSection(title, count, rows) {
+      const head = $el("h3", { style: { margin: "14px 0 6px", fontSize: "13px" } });
+      head.textContent = title + (count ? "（" + count + "）" : "（0）");
+      const box = $el("div", { style: { fontSize: "12px", lineHeight: "1.7", maxHeight: "180px", overflow: "auto",
+        background: "var(--comfy-input-bg,#222)", borderRadius: "6px", padding: "8px 10px" } });
+      if (!count) {
+        box.textContent = t("（无）");
+        return [head, box];
+      }
+      for (const r of rows) box.appendChild(r);
+      return [head, box];
+    }
+    async function openAudit() {
+      statusMsg(t("体检中…"));
+      let d;
+      try {
+        const res = await fetch("./asset/audit", { cache: "no-store" });
+        d = await res.json();
+      } catch (e) { d = { ok: false, error: e && e.message }; }
+      if (!d || !d.ok) { statusMsg(t("体检失败") + " " + terr(d && d.error)); return; }
+      statusMsg(t("归档库体检"));
+      if (pv) closePreview();
+      const m = $el("div.asm-modal");
+      m.style.display = "flex";
+      const pn = $el("div.pn", { style: { maxHeight: "86vh", overflow: "auto", width: "min(760px, 92vw)" } });
+      const ttl = bindText($el("h2", { style: { margin: "0 0 6px", fontSize: "15px" } }), "归档库体检");
+      const tot = $el("div", { style: { fontSize: "12px", color: "var(--descrip-text,#aaa)" } });
+      tot.textContent = LANG === "zh"
+        ? ("共 " + (d.totals.runs || 0) + " 个条目, " + t("占用") + " " + fmtBytes(d.totals.bytes || 0))
+        : ((d.totals.runs || 0) + " " + t("条目") + ", " + t("占用") + " " + fmtBytes(d.totals.bytes || 0));
+      pn.appendChild(ttl);
+      pn.appendChild(tot);
+
+      // 1) 重复来源
+      pn.appendChild(...auditSection(t("重复来源"), (d.dup_source || []).length,
+        (d.dup_source || []).map((g) => $el("div", { textContent:
+          g.source_rel + "  ×" + g.count + "  " + fmtBytes(g.bytes) +
+          "  " + t("最早") + " " + (g.oldest || "—") + " / " + t("最新") + " " + (g.newest || "—") +
+          "\n　" + g.dirs.join(" | ") }))));
+      // 2) 不可预览
+      pn.appendChild(...auditSection(t("不可预览条目"), (d.unplayable || []).length,
+        (d.unplayable || []).map((u) => $el("div", { textContent:
+          u.dir + "  [" + t(AUDIT_REASON_LABELS[u.reason] || u.reason) + "]  " + (u.media || "") }))));
+      // 3) 孤儿
+      pn.appendChild(...auditSection(t("孤儿条目"), (d.orphans || []).length,
+        (d.orphans || []).map((o) => $el("div", { textContent:
+          o.dir + "  →  " + o.source_rel + "  [" + t(AUDIT_REASON_LABELS[o.reason] || o.reason) + "]" }))));
+      // 4) 同内容
+      pn.appendChild(...auditSection(t("同内容疑似重复"), (d.same_content || []).length,
+        (d.same_content || []).map((g) => $el("div", { textContent:
+          fmtBytes(g.size) + "  hash64k " + String(g.hash64k || "").slice(0, 16) +
+          "  ×" + g.dirs.length + "  " + fmtBytes(g.bytes) +
+          "\n　" + g.dirs.join(" | ") }))));
+      pn.appendChild(bindText($el("div", { style: { fontSize: "11px", color: "var(--descrip-text,#999)", marginTop: "12px" } }),
+        "体检只读不改任何文件; 删除属后续版本。"));
+      pn.appendChild($el("div.btns", { style: { marginTop: "10px" } }, [
+        bindText($el("button.asm-btn", { onclick: () => m.remove() }), "关闭"),
+      ]));
+      m.appendChild($el("div.bk", { onclick: () => m.remove() }));
+      m.appendChild(pn);
+      document.body.appendChild(m);
     }
 
     function statusMsg(s) { status.textContent = s; }

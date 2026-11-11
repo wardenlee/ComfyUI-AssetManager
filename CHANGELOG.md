@@ -5,6 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 > 本文件记录 **ComfyUI-AssetManager** 的所有重要改动，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.2.9] - 2026-11-11
+
+### Added · 新增
+
+- **Archive audit — a read-only health check for your library.** A new `体检` button in the toolbar scans every archive entry (including ones hidden by earlier releases) and reports four kinds of bookkeeping debt: duplicate `source_rel` groups (with counts, disk usage, oldest/newest), non-previewable entries (media missing / 0-byte / unplayable container), orphaned entries (the source file in output no longer exists), and same-content suspects (same size + identical first 64 KB hash). Each section shows what it found and how much disk it occupies; the dialog has **no delete buttons** — cleanup comes in a later release after you review the list.<br>
+  **归档库体检 —— 只读的资产库健康检查。** 工具栏新增「体检」按钮，扫描**全部**归档条目（含此前被隐藏的），分四类报告坏账：重复 `source_rel` 组（份数/占用/最早最新）、不可预览条目（媒体缺失 / 0 字节 / 容器不可播放）、孤儿条目（output 源文件已不存在）、同内容疑似重复（同大小 + 前 64KB 哈希一致）。每节列出发现与占用；弹窗**没有任何删除按钮**——等你过目清单后，清理属后续版本。
+
 ## [1.2.8] - 2026-11-11
 
 ### Changed · 改动

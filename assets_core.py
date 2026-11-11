@@ -707,8 +707,200 @@ def safe_media_path(archive_dir, rel):
 
 
 # ---------------------------------------------------------------------------
-# 输出目录: 浏览 + 文件夹管理 (v1.2.0)
+# v1.2.9: 归档库体检(纯只读, §6(C)-①) —— 重复来源 / 不可预览 / 孤儿 / 同内容粗判
 # ---------------------------------------------------------------------------
+
+AUDIT_HASH_BYTES = 65536  # 同内容粗判只读媒体副本前 64KB
+
+
+def _audit_dir_stats(run_dir):
+    """条目目录内全部文件的字节合计(体检 totals 用, 只读)。"""
+    total = 0
+    try:
+        for p in run_dir.iterdir():
+            if not p.is_file():
+                continue
+            try:
+                total += p.stat().st_size
+            except OSError:
+                pass
+    except OSError:
+        pass
+    return total
+
+
+def _audit_hash64k(path):
+    """媒体副本前 64KB 的 sha256(十六进制); 文件小于 64KB 就全读。失败返回 None。"""
+    try:
+        with open(str(path), "rb") as f:
+            head = f.read(AUDIT_HASH_BYTES)
+        import hashlib
+        return hashlib.sha256(head).hexdigest()
+    except Exception:
+        return None
+
+
+def audit_archive(archive_dir, output_dir=None, skip_source_prefixes=None):
+    """归档库体检: 只读清单, 不写盘、不改状态、不删任何东西(§6(C)-①)。
+
+    与 list_runs 不同, 体检**遍历全部条目**(含被 v1.2.5/1.2.7 隐藏的坏账):
+    - dup_source:   source_rel 相同的条目组(count>=2), 标最早/最新与组内占用
+    - unplayable:   媒体缺失 / 0 字节 / 浏览器放不出的容器(.mkv 等)
+    - orphans:      source_rel 指向的 output 文件已不存在(需传 output_dir)
+    - same_content: 媒体副本 (size, 前64KB sha256) 相同的组(组内 >=2 才列)
+    """
+    arch = Path(archive_dir)
+    if not arch.is_dir():
+        return {"ok": False, "error": "Directory not found"}
+    prefixes = []
+    for p in (skip_source_prefixes or []):
+        s = str(p or "").replace("\\", "/").strip().strip("/")
+        if s:
+            prefixes.append(s + "/")
+    out_root = None
+    if output_dir:
+        try:
+            cand = Path(output_dir)
+            out_root = cand if cand.is_dir() else None
+        except Exception:
+            out_root = None
+
+    entries = []
+    total_bytes = 0
+    skipped = 0
+    try:
+        date_dirs = list(arch.iterdir())
+    except OSError:
+        date_dirs = []
+    for date_dir in date_dirs:
+        if not date_dir.is_dir():
+            continue
+        try:
+            run_dirs = list(date_dir.iterdir())
+        except OSError:
+            continue
+        for run_dir in run_dirs:
+            if not run_dir.is_dir():
+                continue
+            info_file = run_dir / "info.json"
+            if not info_file.is_file():
+                continue
+            try:
+                info = json.loads(info_file.read_text(encoding="utf-8"))
+            except Exception:
+                skipped += 1
+                continue
+            if not isinstance(info, dict):
+                skipped += 1
+                continue
+            media = info.get("media") or ""
+            media_path = (run_dir / media) if media else None
+            has_media = bool(media_path and media_path.is_file())
+            media_size = 0
+            if has_media:
+                try:
+                    media_size = media_path.stat().st_size
+                except OSError:
+                    has_media = False
+            dir_bytes = _audit_dir_stats(run_dir)
+            total_bytes += dir_bytes
+            rel = run_dir.relative_to(arch).as_posix()
+            entries.append({
+                "dir": rel,
+                "source_rel": info.get("source_rel") or "",
+                "media": media,
+                "has_media": has_media,
+                "media_size": media_size if has_media else 0,
+                "kind": info.get("kind") or "image",
+                "generated_at": info.get("generated_at") or "",
+                "dir_bytes": dir_bytes,
+            })
+
+    # 1) 重复 source_rel 组
+    by_src = {}
+    for e in entries:
+        src = e["source_rel"]
+        if src:
+            by_src.setdefault(src, []).append(e)
+    dup_source = []
+    for src, group in by_src.items():
+        if len(group) < 2:
+            continue
+        times = sorted([e["generated_at"] for e in group if e["generated_at"]])
+        dup_source.append({
+            "source_rel": src,
+            "count": len(group),
+            "bytes": sum(e["dir_bytes"] for e in group),
+            "oldest": times[0] if times else "",
+            "newest": times[-1] if times else "",
+            "dirs": [e["dir"] for e in group],
+        })
+    dup_source.sort(key=lambda g: -g["bytes"])
+
+    # 2) 不可预览条目(含被视图隐藏的坏账)
+    unplayable = []
+    for e in entries:
+        if not e["media"]:
+            reason = "media-missing"
+        elif not e["has_media"]:
+            reason = "media-missing"
+        elif e["media_size"] == 0:
+            reason = "media-zero-byte"
+        elif is_unplayable_video(e["media"]):
+            reason = "unplayable-container"
+        else:
+            continue
+        unplayable.append({"dir": e["dir"], "media": e["media"], "reason": reason,
+                           "source_rel": e["source_rel"]})
+
+    # 3) 孤儿条目(source_rel 指向的 output 文件已不存在)
+    orphans = []
+    if out_root is not None:
+        for e in entries:
+            src = e["source_rel"]
+            if not src:
+                continue
+            low = src.replace("\\", "/").lower()
+            if any(low.startswith(p.lower()) for p in prefixes):
+                continue
+            try:
+                if (out_root / src.replace("\\", "/")).exists():
+                    continue
+            except OSError:
+                continue
+            orphans.append({"dir": e["dir"], "source_rel": src, "reason": "output-missing"})
+
+    # 4) 同内容粗判(size + 前 64KB hash); 坏账(缺媒体/0字节)不参与
+    by_content = {}
+    for e in entries:
+        if not e["has_media"] or e["media_size"] == 0:
+            continue
+        h = _audit_hash64k(Path(archive_dir) / e["dir"] / e["media"])
+        if not h:
+            continue
+        key = (e["media_size"], h)
+        by_content.setdefault(key, []).append(e)
+    same_content = []
+    for (size, h), group in by_content.items():
+        if len(group) < 2:
+            continue
+        same_content.append({
+            "size": size,
+            "hash64k": h,
+            "bytes": sum(e["dir_bytes"] for e in group),
+            "dirs": [e["dir"] for e in group],
+        })
+    same_content.sort(key=lambda g: -g["bytes"])
+
+    return {"ok": True,
+            "totals": {"runs": len(entries), "bytes": total_bytes},
+            "dup_source": dup_source,
+            "unplayable": unplayable,
+            "orphans": orphans,
+            "same_content": same_content,
+            "skipped": skipped}
+
+
 
 def _err_brief(exc):
     """异常摘要(英文短句, 不含本地化系统消息)"""
