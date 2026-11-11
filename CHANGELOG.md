@@ -5,6 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 > 本文件记录 **ComfyUI-AssetManager** 的所有重要改动，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.3.2] - 2026-11-11
+
+### Added · 新增
+
+- **Download progress with cancel.** The `下载文件` button (both previews) now streams the file and shows a live percentage progress bar in the status line, with a `取消` button that aborts mid-transfer ("已取消下载", not an error). Small files without length headers fall back to the old whole-blob path. Backend is unchanged — aiohttp's FileResponse was already streaming with `Content-Length`; progress is computed in the browser from the response stream.<br>
+  **下载进度与取消。** 两个预览的「下载文件」按钮现在流式下载并在状态栏显示实时百分比进度条，带「取消」按钮可中途中止（状态栏显示"已取消下载"，不算失败）。无长度头的小文件自动退回整段下载。后端零改动——aiohttp 的 FileResponse 本就是流式带 `Content-Length`，百分比在浏览器侧从响应流计算。
+
 ## [1.3.1] - 2026-11-11
 
 ### Added · 新增

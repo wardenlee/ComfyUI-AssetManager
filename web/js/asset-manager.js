@@ -312,6 +312,7 @@ app.registerExtension({
       "已对齐": "relined",
       "已重建": "rebuilt",
       "已标孤立": "marked orphaned",
+      "已取消下载": "Download cancelled",
       "确定要彻底删除该批次吗? 删除后无法恢复。": "Permanently delete this batch? This cannot be undone.",
       "确定要清空回收站吗? 全部批次将永久删除, 无法恢复。": "Empty the trash? All batches will be permanently deleted. This cannot be undone.",
       "根": "Root",
@@ -1502,17 +1503,78 @@ app.registerExtension({
       return info;
     }
     // v1.2.6: 「下载文件」—— 把 output 里的原始文件本体存下来(视频/图/其他都行)
+    // ---------- v1.3.2: 大文件下载 stream + 百分比进度 + 取消(§6(C)-④) ----------
+    // 后端 aiohttp FileResponse 本就流式且带 Content-Length —— 进度在浏览器侧按流读取计算。
+    let dlProgressAbort = null;   // 当前下载的 AbortController
+    function downloadProgressBegin(name) {
+      const wrap = $el("div", { style: { display: "flex", alignItems: "center", gap: "8px",
+        fontSize: "12px", marginTop: "4px" } });
+      const bar = $el("div", { style: { position: "relative", flex: "1", height: "10px",
+        background: "var(--comfy-input-bg,#333)", borderRadius: "5px", overflow: "hidden" } });
+      const fill = $el("div", { style: { width: "0%", height: "100%",
+        background: "var(--accent-color,#7aa)", transition: "width .15s linear" } });
+      bar.appendChild(fill);
+      const label = $el("span", { textContent: name + " 0%", style: { whiteSpace: "nowrap",
+        color: "var(--descrip-text,#bbb)" } });
+      const cancelBtn = bindText($el("button.asm-btn", { style: { fontSize: "11px", padding: "1px 8px" },
+        onclick: () => { if (dlProgressAbort) dlProgressAbort.abort(); } }), "取消");
+      wrap.appendChild(bar);
+      wrap.appendChild(label);
+      wrap.appendChild(cancelBtn);
+      status.appendChild(wrap);
+      return {
+        set(pct) {
+          const p = Math.max(0, Math.min(100, Math.round(pct)));
+          fill.style.width = p + "%";
+          label.textContent = name + " " + p + "%";
+        },
+        done() { wrap.remove(); },
+      };
+    }
+    // 流式取回 blob: reader 边收边按 Content-Length 算百分比; abort 可中断。
+    async function fetchBlobWithProgress(url, displayName) {
+      dlProgressAbort = new AbortController();
+      const ui = downloadProgressBegin(displayName);
+      try {
+        const res = await fetch(url, { cache: "no-store", signal: dlProgressAbort.signal });
+        if (!res.ok) { ui.done(); dlProgressAbort = null; return null; }
+        const total = Number(res.headers.get("Content-Length") || 0);
+        if (!res.body || !total) {
+          // 无流/无长度: 退化为整段 blob(小文件常态)
+          const blob = await res.blob();
+          ui.set(100); ui.done(); dlProgressAbort = null;
+          return blob;
+        }
+        const reader = res.body.getReader();
+        const chunks = [];
+        let got = 0;
+        for (;;) {
+          const step = await reader.read();
+          if (step.done) break;
+          chunks.push(step.value);
+          got += step.value.length;
+          ui.set((got / total) * 100);
+        }
+        ui.set(100); ui.done(); dlProgressAbort = null;
+        return new Blob(chunks);
+      } catch (e) {
+        ui.done(); dlProgressAbort = null;
+        if (e && e.name === "AbortError") throw { aborted: true };
+        throw e;
+      }
+    }
+
     async function downloadOutputFile(f) {
       if (!f || !f.rel) return;
       try {
-        const res = await fetch("./asset/output_file?p=" + encodeURIComponent(f.rel), { cache: "no-store" });
-        if (!res.ok) { statusMsg(t("下载失败")); return; }
-        const blob = await res.blob();
+        const blob = await fetchBlobWithProgress("./asset/output_file?p=" + encodeURIComponent(f.rel), safeName(f.name));
+        if (!blob) { statusMsg(t("下载失败")); return; }
         const mode = await saveBlobToLocal(blob, safeName(f.name));
         statusMsg(mode === "dir" && dlDirHandle && dlDirHandle.name
           ? (LANG === "zh" ? ("✅ 已保存 " + safeName(f.name) + " → 本地目录: " + dlDirHandle.name) : ("✅ Saved " + safeName(f.name) + " → local folder: " + dlDirHandle.name))
           : (LANG === "zh" ? ("✅ 已开始下载: " + safeName(f.name)) : ("✅ Download started: " + safeName(f.name))));
       } catch (e) {
+        if (e && e.aborted) { statusMsg(t("已取消下载")); return; }
         statusMsg(t("下载失败") + (e && e.message ? "  " + e.message : ""));
       }
     }
@@ -1551,14 +1613,14 @@ app.registerExtension({
     async function downloadMediaFile(r) {
       if (!r || !r.media) { statusMsg(t("该产物未携带媒体文件")); return; }
       try {
-        const res = await fetch("./asset/file?p=" + encodeURIComponent(r.dir + "/" + r.media), { cache: "no-store" });
-        if (!res.ok) { statusMsg(t("下载失败")); return; }
-        const blob = await res.blob();
+        const blob = await fetchBlobWithProgress("./asset/file?p=" + encodeURIComponent(r.dir + "/" + r.media), safeName(r.media));
+        if (!blob) { statusMsg(t("下载失败")); return; }
         const mode = await saveBlobToLocal(blob, safeName(r.media));
         statusMsg(mode === "dir" && dlDirHandle && dlDirHandle.name
           ? (LANG === "zh" ? ("✅ 已保存 " + safeName(r.media) + " → 本地目录: " + dlDirHandle.name) : ("✅ Saved " + safeName(r.media) + " → local folder: " + dlDirHandle.name))
           : (LANG === "zh" ? ("✅ 已开始下载: " + safeName(r.media)) : ("✅ Download started: " + safeName(r.media))));
       } catch (e) {
+        if (e && e.aborted) { statusMsg(t("已取消下载")); return; }
         statusMsg(t("下载失败") + (e && e.message ? "  " + e.message : ""));
       }
     }
