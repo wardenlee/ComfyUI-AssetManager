@@ -1112,6 +1112,211 @@ def trash_purge(archive_dir, batch):
     return {"ok": True, "batch": batch}
 
 
+# ---------------------------------------------------------------------------
+# v1.3.1: 归档状态汇总 + 修复(§6(C)-③) —— 对齐 source_rel / 重建 info.json / 标孤立
+# ---------------------------------------------------------------------------
+
+def status_summary(archive_dir, output_dir, state, cfg, skip_source_prefixes=None):
+    """一次扫描 + 状态汇总: 新增 N / 跳过 M 残留 / K 条归档失效(孤儿)。
+
+    "归档失效" = 库中条目的 source_rel 指向的 output 文件已不存在(不自动删,
+    由 repair_archive 标记或由用户在体检里处理)。
+    """
+    stats = {}
+    out = Path(output_dir) if output_dir else None
+    if out is not None and not out.is_dir():
+        out = None
+    n_new = scan_all(output_dir, archive_dir, state, cfg) if output_dir else 0
+    # v1.3.1 修正: scan_all 签名冻结(§2.5 A12), 残留计数独立轻量统计(一次 os.walk, 同判据)
+    skipped = 0
+    if out is not None:
+        try:
+            hidden = hidden_roots(output_dir, [archive_dir, (cfg or {}).get("backup_dir")])
+        except Exception:
+            hidden = set()
+        for root, dirs, files in os.walk(out):
+            dirs[:] = [d for d in dirs
+                       if not d.startswith(".") and not _is_hidden(Path(root) / d, hidden)]
+            for fn in files:
+                if fn.startswith("."):
+                    continue
+                if is_artifact_name(fn) or is_half_written(fn):
+                    skipped += 1
+                    continue
+                if Path(fn).suffix.lower() not in ALL_EXT:
+                    skipped += 1
+                    continue
+                try:
+                    if (Path(root) / fn).stat().st_size == 0:
+                        skipped += 1
+                except OSError:
+                    pass
+    # 孤儿 = 可见条目里 source_rel 在 output 已不存在的
+    broken = 0
+    prefixes = []
+    for p in (skip_source_prefixes or []):
+        s = str(p or "").replace("\\", "/").strip().strip("/")
+        if s:
+            prefixes.append(s.lower() + "/")
+    for r in list_runs(archive_dir):
+        src = (r or {}).get("source_rel") or ""
+        if not src:
+            continue
+        low = src.replace("\\", "/").lower()
+        if any(low.startswith(p) for p in prefixes):
+            continue
+        if out is None or not (out / src.replace("\\", "/")).exists():
+            broken += 1
+    return {"ok": True, "new": n_new, "skipped": skipped, "broken": broken}
+
+
+def repair_archive(archive_dir, output_dir, state, skip_source_prefixes=None):
+    """修复归档库(幂等, 不删任何文件):
+
+    1) relink: output 里同一文件被改名/移动后, 归档条目的 source_rel 落空 ——
+       用"归档媒体副本的字节数 == output 中某无主文件字节数 且 旧 rel 已不存在
+       且新 rel 尚无归档条目"三重条件判定, 改写 info.json 的 source_rel + state 键迁移。
+    2) rebuild: 条目目录缺 info.json 但有媒体文件 -> 按文件名/时间重建最小 info
+       (source_rel 置空 = 视为孤立, 不猜测归属)。
+    3) mark-orphan: source_rel 落空的条目在 info.json 写 "orphan": true(不删)。
+    """
+    arch = Path(archive_dir)
+    if not arch.is_dir():
+        return {"ok": False, "error": "Directory not found"}
+    out = Path(output_dir).resolve() if output_dir else None
+    relinked, rebuilt, marked = 0, 0, 0
+    details = []
+    prefixes = []
+    for p in (skip_source_prefixes or []):
+        s = str(p or "").replace("\\", "/").strip().strip("/")
+        if s:
+            prefixes.append(s.lower() + "/")
+
+    index = _archive_index(archive_dir)   # source_rel -> {dir, thumb, media}
+
+    # 收集 output 现存文件清单(rel -> size), 供 relink 匹配
+    out_files = {}
+    if out is not None and out.is_dir():
+        for root, dirs, files in os.walk(out):
+            dirs[:] = [d for d in dirs
+                       if not d.startswith(".") and not _is_hidden(Path(root) / d, hidden_roots(str(out), [str(arch)]))]
+            for fn in files:
+                if fn.startswith(".") or is_artifact_name(fn):
+                    continue
+                fp = Path(root) / fn
+                try:
+                    out_files[fp.relative_to(out).as_posix()] = fp.stat().st_size
+                except OSError:
+                    pass
+
+    claimed = set(index.keys())   # 已有归档条目的 source_rel(新版含孤儿)
+
+    for date_dir in sorted(arch.iterdir()):
+        if not date_dir.is_dir() or date_dir.name == TRASH_DIR_NAME:
+            continue
+        for run_dir in sorted(date_dir.iterdir()):
+            if not run_dir.is_dir():
+                continue
+            info_file = run_dir / "info.json"
+            media_files = []
+            try:
+                for p in run_dir.iterdir():
+                    if p.is_file() and not is_artifact_name(p.name):
+                        media_files.append(p)
+            except OSError:
+                continue
+
+            # (2) 重建缺失 info.json
+            if not info_file.is_file():
+                if media_files:
+                    m0 = media_files[0]
+                    try:
+                        st0 = m0.stat()
+                    except OSError:
+                        continue
+                    info = {"run_id": run_dir.name,
+                            "archived_at": _iso_ts(st0.st_ctime),
+                            "generated_at": _iso_ts(st0.st_mtime),
+                            "source_rel": "", "media": m0.name,
+                            "kind": _kind_of(m0.name),
+                            "file_size": st0.st_size,
+                            "positive": "", "negative": "", "prompt_nodes": [],
+                            "params": {}, "models": [], "has_workflow": False,
+                            "thumb": None, "orphan": True,
+                            "rebuilt": True}
+                    info_file.write_text(json.dumps(info, ensure_ascii=False, indent=2),
+                                         encoding="utf-8")
+                    rebuilt += 1
+                    details.append({"dir": run_dir.relative_to(arch).as_posix(),
+                                    "action": "rebuilt-info"})
+                continue
+
+            try:
+                info = json.loads(info_file.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if not isinstance(info, dict):
+                continue
+            src = (info.get("source_rel") or "").replace("\\", "/").strip("/")
+            if not src:
+                continue
+            low = src.lower()
+            if any(low.startswith(p) for p in prefixes):
+                continue
+
+            src_path = (out / src.replace("\\", "/")) if out is not None else None
+            if src_path is not None and src_path.exists():
+                # 一切正常; 若之前标记过孤儿, 摘掉
+                if info.get("orphan"):
+                    info.pop("orphan", None)
+                    info_file.write_text(json.dumps(info, ensure_ascii=False, indent=2),
+                                         encoding="utf-8")
+                continue
+
+            # (3) 孤儿标记 + (1) 尝试 relink
+            msize = None
+            try:
+                m = run_dir / (info.get("media") or "")
+                if m.is_file():
+                    msize = m.stat().st_size
+            except OSError:
+                msize = None
+            new_rel = None
+            if msize is not None and out is not None:
+                for rel_c, sz in out_files.items():
+                    if sz != msize or rel_c in claimed:
+                        continue
+                    new_rel = rel_c
+                    break
+            if new_rel:
+                info["source_rel"] = new_rel
+                info.pop("orphan", None)
+                info_file.write_text(json.dumps(info, ensure_ascii=False, indent=2),
+                                     encoding="utf-8")
+                if src in state:
+                    state[new_rel] = state.pop(src)
+                claimed.add(new_rel)
+                relinked += 1
+                details.append({"dir": run_dir.relative_to(arch).as_posix(),
+                                "action": "relinked", "from": src, "to": new_rel})
+            else:
+                if not info.get("orphan"):
+                    info["orphan"] = True
+                    info_file.write_text(json.dumps(info, ensure_ascii=False, indent=2),
+                                         encoding="utf-8")
+                    marked += 1
+                    details.append({"dir": run_dir.relative_to(arch).as_posix(),
+                                    "action": "marked-orphan", "source_rel": src})
+
+    if relinked:
+        try:
+            save_state(archive_dir, state)
+        except Exception:
+            pass
+    return {"ok": True, "relinked": relinked, "rebuilt": rebuilt,
+            "marked": marked, "details": details[:50]}
+
+
 
 def _err_brief(exc):
     """异常摘要(英文短句, 不含本地化系统消息)"""
@@ -1470,6 +1675,10 @@ def list_output(output_dir, rel="", archive_dir=None, open_state=None, exclude_d
         ext = Path(name).suffix.lower()
         kind = "image" if ext in IMAGE_EXT else ("video" if ext in VIDEO_EXT else "other")
         run = index.get(child_rel) or {}
+        # v1.3.1: 归档状态角标 —— archived=库中有该文件的归档条目; missing-info=从未归档。
+        # (broken 态不可达: index 来自 list_runs, 坏条目已被 v1.2.7 隐藏, 孤儿检测归体检/修复)
+        run_dir_val = run.get("dir") or ""
+        arch_state = "archived" if run_dir_val else "missing-info"
         files.append({
             "name": name,
             "rel": child_rel,
@@ -1478,9 +1687,10 @@ def list_output(output_dir, rel="", archive_dir=None, open_state=None, exclude_d
             "created": created,
             "mtime": mtime,
             "opened": open_state.get(open_key_out(child_rel)) or "",
-            "run_dir": run.get("dir") or "",
+            "run_dir": run_dir_val,
             "thumb": run.get("thumb") or "",
             "media": run.get("media") or "",
+            "arch_state": arch_state,
         })
     if rel_n == "":
         parent = None

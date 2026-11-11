@@ -20,7 +20,7 @@ WEB_DIRECTORY = "web"
 NODE_CLASS_MAPPINGS = {}
 NODE_DISPLAY_NAME_MAPPINGS = {}
 
-__version__ = "1.3.0"
+__version__ = "1.3.1"
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _cfg = assets_core.load_config(BASE_DIR)
@@ -492,10 +492,26 @@ async def asset_delete_batch(request):
 async def asset_scan(request):
     def _go():
         with _LOCK:
-            return assets_core.scan_all(_current_output_dir(), _arch, _state, _cfg)
+            return assets_core.status_summary(_current_output_dir(), _arch, _state, _cfg,
+                                              _skip_source_prefixes())
 
     n = await asyncio.to_thread(_go)
-    return web.json_response({"ok": True, "new": n})
+    return web.json_response(n)
+
+
+@PromptServer.instance.routes.post("/asset/repair")
+async def asset_repair(request):
+    """v1.3.1 归档修复: 对齐 source_rel / 重建缺失 info.json / 孤儿标记(不删任何文件)"""
+    def _go():
+        with _LOCK:
+            return assets_core.repair_archive(_arch, _current_output_dir(), _state,
+                                              _skip_source_prefixes())
+
+    try:
+        result = await asyncio.to_thread(_go)
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)})
+    return web.json_response(result)
 
 
 @PromptServer.instance.routes.post("/asset/backup")

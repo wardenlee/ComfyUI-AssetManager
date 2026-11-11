@@ -25,6 +25,7 @@ const STYLE = `
 .asm-card img { width:100%; height:100%; object-fit:cover; display:block; }
 .asm-card .play { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:42px; height:42px; border-radius:50%; background:rgba(0,0,0,.6); border:2px solid rgba(255,255,255,.7); color:#fff; display:flex; align-items:center; justify-content:center; font-size:16px; pointer-events:none; }
 .asm-card .badge { position:absolute; top:6px; left:6px; background:rgba(0,0,0,.65); color:#fff; font-size:10px; padding:1px 7px; border-radius:10px; }
+.asm-card .badge.warn { top:6px; left:6px; margin-top:18px; background:rgba(150,110,0,.85); color:#ffe9a8; }
 .asm-card .meta { padding:7px 9px; }
 .asm-card .nm { font-size:11px; color:var(--descrip-text,#aaa); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .asm-card .pr { font-size:11px; color:var(--fg-color,#eee); height:2.2em; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
@@ -302,6 +303,15 @@ app.registerExtension({
       "已彻底删除": "Deleted permanently",
       "恢复失败": "Restore failed",
       "回收站加载失败": "Failed to load trash",
+      "已归档": "Archived",
+      "未归档": "Not archived",
+      "归档失效": "Archive broken",
+      "修复": "Repair",
+      "修复中…": "Repairing…",
+      "修复失败": "Repair failed",
+      "已对齐": "relined",
+      "已重建": "rebuilt",
+      "已标孤立": "marked orphaned",
       "确定要彻底删除该批次吗? 删除后无法恢复。": "Permanently delete this batch? This cannot be undone.",
       "确定要清空回收站吗? 全部批次将永久删除, 无法恢复。": "Empty the trash? All batches will be permanently deleted. This cannot be undone.",
       "根": "Root",
@@ -620,6 +630,9 @@ app.registerExtension({
     // v1.3.0: 回收站(统一软删除的恢复入口) —— §6(C)-②
     const trashBtn = $el("button.asm-btn", { onclick: openTrash });
     bindText(trashBtn, "回收站");
+    // v1.3.1: 归档修复(对齐/重建/标孤立, 不删文件) —— §6(C)-③
+    const repairBtn = $el("button.asm-btn", { onclick: doRepair });
+    bindText(repairBtn, "修复");
     // 工具栏共用排序下拉: 文件夹列表 / 文件夹网格 / 网格 runs / 日历当天列表 共用同一 sortMode
     const sortSel = $el("select.asm-sort");
     function fillSortSel() {
@@ -655,6 +668,7 @@ app.registerExtension({
       scanBtn,
       auditBtn,
       trashBtn,
+      repairBtn,
       countEl,
     ]);
 
@@ -925,6 +939,8 @@ app.registerExtension({
         thumbEl,
         isVid ? $el("div.play", { textContent: "▶" }) : null,
         $el("span.badge", { textContent: isVid ? t("视频") : (f.kind === "image" ? t("图") : t("其他")) }),
+        // v1.3.1: 归档状态角标 —— 未归档黄 / 已归档不显示(常态不噪)
+        f.arch_state === "missing-info" ? $el("span.badge.warn", { textContent: t("未归档") }) : null,
         on ? $el("div.selmark", { textContent: "✓" }) : null,
       ].filter(Boolean)));
       card.appendChild($el("div.meta", {}, [
@@ -2114,8 +2130,14 @@ app.registerExtension({
       statusMsg(t("扫描中…"));
       const res = await fetch("./asset/scan", { method: "POST" });
       const d = await res.json();
-      statusMsg(d.ok ? (LANG === "zh" ? ("扫描完成, 新增 " + d.new + " 条") : ("Scan done, " + d.new + " new")) : t("扫描失败"));
-      await loadRuns(); refresh();
+      if (d.ok) {
+        // v1.3.1: 扫描汇总 = 新增 N / 跳过 M 残留 / K 条归档失效
+        const parts = [LANG === "zh" ? ("扫描完成, 新增 " + d.new + " 条") : ("Scan done, " + d.new + " new")];
+        if (d.skipped) parts.push(LANG === "zh" ? ("跳过 " + d.skipped + " 残留") : ("skipped " + d.skipped));
+        if (d.broken) parts.push(LANG === "zh" ? (d.broken + " 条归档失效") : (d.broken + " broken"));
+        statusMsg(parts.join(", "));
+        await loadRuns(); refresh();
+      } else statusMsg(t("扫描失败"));
     }
 
     // ---------- v1.2.9 归档库体检(只读, 零删除) ----------
@@ -2276,6 +2298,23 @@ app.registerExtension({
       m.appendChild($el("div.bk", { onclick: () => m.remove() }));
       m.appendChild(pn);
       document.body.appendChild(m);
+    }
+
+    // ---------- v1.3.1 归档修复(对齐 source_rel / 重建 info.json / 标孤立; 不删任何文件) ----------
+    async function doRepair() {
+      statusMsg(t("修复中…"));
+      let d;
+      try {
+        const res = await fetch("./asset/repair", { method: "POST" });
+        d = await res.json();
+      } catch (e) { d = { ok: false, error: e && e.message }; }
+      if (!d || !d.ok) { statusMsg(t("修复失败") + " " + terr(d && d.error)); return; }
+      const parts = [];
+      if (d.relinked) parts.push(t("已对齐") + " " + d.relinked);
+      if (d.rebuilt) parts.push(t("已重建") + " " + d.rebuilt);
+      if (d.marked) parts.push(t("已标孤立") + " " + d.marked);
+      statusMsg(parts.length ? parts.join(", ") : (LANG === "zh" ? "库状态良好, 无需修复" : "Nothing to repair"));
+      await loadRuns(); refresh();
     }
 
     function statusMsg(s) { status.textContent = s; }

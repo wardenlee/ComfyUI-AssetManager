@@ -36,6 +36,8 @@ An in-panel **asset manager** for ComfyUI that auto-archives every image/video y
   **归档库体检** — 「体检」按钮对整个库做只读健康检查，列出重复来源组、不可预览条目、孤儿条目与同内容疑似重复，并给出各组占用。设计上只读：不改任何文件，等你过目清单后再做清理（属后续版本）。
 - **Trash — deleting is reversible** — every delete (grid/calendar preview, folder-view file or folder) moves items into a trash inside the archive library; the `回收站` view restores them to their original places or purges them permanently (double-confirmed). Deleting an asset moves its archive copy and the original file together, so restoring brings both back.<br>
   **回收站 —— 删除可回滚** —— 所有删除（网格/日历预览、文件夹视图的文件与文件夹）都会移入归档库内的回收站；「回收站」视图可整批恢复原位或二次确认后彻底删除。删资产时归档副本与原始文件同批移动，恢复时一起回来。
+- **Archive status & repair** — folder-view cards badge never-archived files (`未归档`); the scan status line summarizes `新增 N / 跳过 M 残留 / K 条归档失效`; the `修复` button relinks entries to renamed/moved source files, rebuilds missing `info.json`, and marks orphans — read-safe, never deletes.<br>
+  **归档状态与修复** —— 文件夹视图给从未归档的文件打 `未归档` 角标；扫描状态栏汇总 `新增 N / 跳过 M 残留 / K 条归档失效`；「修复」按钮把归档条目重新对齐到改名/移动后的源文件、重建缺失 `info.json`、标记孤立条目——只读安全，绝不删除。
 - **Preview & reproduce** — view full-size images / play videos, copy prompt, download the file itself (the original output file in the folder view, the archived media copy in the grid/calendar views).<br>
   **预览与复现** — 点开看大图/播视频、复制提示词、下载文件本体（文件夹视图里是 output 的原始文件，网格/日历里是归档库中的媒体副本）。
 - **Preview navigation** — inside the large-image preview press `←` / `→` (or the on-screen arrows) to flip through the current batch without closing it; wraps around, shows `n / total`, `Esc` closes, adjacent images are preloaded. The preview dialog is now as tall as the main panel and ~30% wider; the arrows sit outside the image, close to the panel edges.<br>

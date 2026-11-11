@@ -5,6 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 > 本文件记录 **ComfyUI-AssetManager** 的所有重要改动，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.3.1] - 2026-11-11
+
+### Added · 新增
+
+- **Archive status at a glance + one-click repair.** Folder-view cards show a `未归档` badge for files that have never been archived (archived files show nothing — no noise). The scan button's status line now summarizes: `新增 N 条, 跳过 M 残留, K 条归档失效`. A new no-icon `修复` button runs a safe repair pass: it **relinks** archive entries whose source file was renamed/moved (byte-size match against unclaimed output files, rewriting `source_rel` and migrating the state key), **rebuilds** a missing `info.json` from the media file itself (marked `orphan`/`rebuilt`), and **marks** orphaned entries with an `orphan` flag — **it never deletes anything**.<br>
+  **归档状态一眼可见 + 一键修复。** 文件夹视图卡片为从未归档的文件显示 `未归档` 角标（已归档不显示，常态不噪）。扫描按钮的状态栏现在汇总：`新增 N 条, 跳过 M 残留, K 条归档失效`。新增无图标「修复」按钮执行安全修复：**对齐**（源文件被改名/移动后，按字节匹配未占用文件改写 `source_rel` 并迁移状态键）、**重建**（条目缺 `info.json` 时从媒体文件重建并标 `orphan`/`rebuilt`）、**标孤立**（`source_rel` 落空的条目写 `orphan` 标记）——**不删任何文件**。
+
 ## [1.3.0] - 2026-11-11
 
 ### Added · 新增
