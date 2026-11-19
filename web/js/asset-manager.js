@@ -313,6 +313,7 @@ app.registerExtension({
       "已重建": "rebuilt",
       "已标孤立": "marked orphaned",
       "已取消下载": "Download cancelled",
+      "视频加载中…": "Loading video…",
       "清理旧产物": "Cleanup old",
       "清理候选(早于 N 天)": "Cleanup candidates (older than N days)",
       "天数": "days",
@@ -1301,6 +1302,8 @@ app.registerExtension({
 
     // ---------- 预览(大图内 ←/→ 快速切换) ----------
     let pv = null; // { m, step } —— 当前打开的大图预览
+    let rangeWarmer = null;   // v1.3.5 ②: 视频首段 Range 预热的 AbortController
+    let previewCache = {};    // v1.3.5 ④: 已预取的原图 url -> true
 
     function previewMedia(r) {
       const full = mediaUrl(r.dir, r.media);
@@ -1320,7 +1323,63 @@ app.registerExtension({
       ]);
     }
 
+    // ---------- v1.3.5: 零白屏占位 ----------
+    // ① 先摆"已加载好的缩略图"(铺满、objectFit contain), 原图/视频就绪后无缝替换;
+    //    原图失败则保留缩略图 + 角标, 不再整块白屏。
+    function placeholderBox(thumbSrc, fullEl, isVideo) {
+      const box = $el("div.asm-pvpv");
+      box.style.cssText = "position:relative;width:100%;height:100%;display:flex;" +
+        "align-items:center;justify-content:center;background:#0b0b0b";
+      if (thumbSrc) {
+        const th = $el("img.asm-pvshot");
+        th.src = thumbSrc;
+        th.style.cssText = "position:absolute;inset:0;width:100%;height:100%;" +
+          "object-fit:contain;filter:blur(6px) brightness(.9);transform:scale(1.04)";
+        box.appendChild(th);
+      }
+      const tag = $el("div.asm-pvtag");
+      tag.style.cssText = "position:absolute;right:10px;bottom:8px;font-size:11px;" +
+        "color:#ccc;background:rgba(0,0,0,.5);padding:1px 7px;border-radius:9px";
+      tag.textContent = isVideo ? t("视频加载中…") : t("加载中…");
+      fullEl.style.position = "relative";
+      box.appendChild(fullEl);
+      box.appendChild(tag);
+      function settle() { try { tag.remove(); } catch (e) {} }
+      if (fullEl.tagName === "IMG") { fullEl.onload = settle; fullEl.onerror = settle; }
+      else { fullEl.addEventListener("loadeddata", settle, { once: true }); }
+      return box;
+    }
+
+    // ---------- v1.3.5: 视频首字节预热(②) + 后台预取(④) ----------
+    function warmVideoFirstBytes(url) {
+      try {
+        if (rangeWarmer) { rangeWarmer.abort(); }
+        const ctl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+        rangeWarmer = ctl;
+        const t0 = setTimeout(() => { try { if (ctl) ctl.abort(); } catch (e) {} }, 3000);
+        fetch(url, { cache: "no-store", headers: { "Range": "bytes=0-65535" }, signal: ctl ? ctl.signal : undefined })
+          .then((r) => { clearTimeout(t0); try { r.arrayBuffer(); } catch (e) {} })
+          .catch(() => { clearTimeout(t0); });
+      } catch (e) {}
+    }
+
+    // (4) 面板打开后后台预取最近 N 张原图(只预取图片, 视频不碰)
+    const PREFETCH_N = 6;
+    function prefetchRunsImages(list) {
+      let n = 0;
+      for (const r of list) {
+        if (n >= PREFETCH_N) break;
+        if (!r || r.kind !== "image" || !r.dir || !r.media) continue;
+        const u = mediaUrl(r.dir, r.media);
+        if (previewCache[u]) continue;
+        previewCache[u] = true;
+        n += 1;
+        try { const im = new Image(); im.src = u; } catch (e) {}
+      }
+    }
+
     function closePreview() {
+      if (rangeWarmer) { try { rangeWarmer.abort(); } catch (e) {} rangeWarmer = null; }
       if (pv && pv.m) pv.m.remove();
       pv = null;
     }
@@ -1332,6 +1391,8 @@ app.registerExtension({
       if (idx < 0) return;
       if (pv) closePreview();
       reportOpen("run:" + r.dir); // 打开归档资产的打开时间上报(失败静默)
+      // v1.3.5 ④: 后台预取最近 N 张原图(只在图片条目里挑, 不干扰当前预览)
+      try { prefetchRunsImages(list); } catch (e) {}
 
       const m = $el("div.asm-modal");
       m.style.display = "flex";
@@ -1354,6 +1415,8 @@ app.registerExtension({
         for (const k of [i - 1, i + 1]) {
           const x = list[(k + list.length) % list.length];
           if (x && x.kind === "image") { try { const im = new Image(); im.src = mediaUrl(x.dir, x.media); } catch (e) {} }
+          // v1.3.5 ②: 相邻视频预热首字节(只取前 64KB, 拖动进度仍由浏览器按需请求)
+          if (x && x.kind === "video" && x.media) { try { warmVideoFirstBytes(mediaUrl(x.dir, x.media)); } catch (e) {} }
         }
       }
       function show(i) {
@@ -1361,7 +1424,9 @@ app.registerExtension({
         const cur = list[idx];
         mediaBox.innerHTML = "";
         const media = previewMedia(cur);
-        mediaBox.appendChild(media);
+        // v1.3.5 ①: 先放缩略图占位, 原图/视频就绪后无缝替换(零白屏)
+        const thumbSrc = cur.thumb ? mediaUrl(cur.dir, cur.thumb) : "";
+        mediaBox.appendChild(placeholderBox(thumbSrc, media, media.tagName === "VIDEO"));
         // v1.2.6: 视频放不出来(编码/容器不支持)时给明确提示, 不再黑屏
         if (media.tagName === "VIDEO") {
           media.addEventListener("error", () => {
@@ -1453,6 +1518,8 @@ app.registerExtension({
         for (const k of [i - 1, i + 1]) {
           const x = list[(k + list.length) % list.length];
           if (x && x.kind === "image") { try { const im = new Image(); im.src = outUrl(x.rel); } catch (e) {} }
+          // v1.3.5 ②: 相邻视频预热首字节
+          if (x && x.kind === "video" && x.rel) { try { warmVideoFirstBytes(outUrl(x.rel)); } catch (e) {} }
         }
       }
       function show(i) {
@@ -1460,7 +1527,9 @@ app.registerExtension({
         const cur = list[idx];
         mediaBox.innerHTML = "";
         const media = mediaFor(cur);
-        mediaBox.appendChild(media);
+        // v1.3.5 ①: 文件夹视图优先用归档缩略图占位, 无则留空等原图(零白屏)
+        const thumbSrc = (cur.run_dir && cur.thumb) ? mediaUrl(cur.run_dir, cur.thumb) : "";
+        mediaBox.appendChild(placeholderBox(thumbSrc, media, media.tagName === "VIDEO"));
         // v1.2.6: 视频放不出来(编码/容器不支持)时给明确提示, 不再黑屏
         if (media.tagName === "VIDEO") {
           media.addEventListener("error", () => {
@@ -2567,11 +2636,12 @@ app.registerExtension({
           const oldDirs = new Set(runs.map(r => r.dir));
           const changed = newDirs.size !== oldDirs.size || [...newDirs].some(x => !oldDirs.has(x));
           if (changed) {
+            // v1.3.5 ③: 增量更新 —— 只换数据, 不整格重建 DOM(保住滚动/已加载图片/多选高亮)
             runs = d.runs || [];
             rebuildByDate();
-            // 清除已不存在的选中项
             for (const s of [...selected]) if (!newDirs.has(s)) selected.delete(s);
-            refresh();
+            countEl.textContent = sortRuns(filtered(runs)).length + " / " + runs.length;
+            updateBatchBtn();
             statusMsg(t("已自动更新: 共 ") + runs.length + t(" 条资产"));
             await autoDownloadNew(newDirs, d.runs || []);
           }

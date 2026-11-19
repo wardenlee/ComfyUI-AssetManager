@@ -5,6 +5,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 > 本文件记录 **ComfyUI-AssetManager** 的所有重要改动，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.3.5] - 2026-11-19
+
+### Changed · 改动
+
+- **All views now show images and videos only.** Non-media files (`.json` / `.txt` / `.py` / `.exe` / …) no longer take a slot in the folder view grid, the folder download manifest or any list — they stay on disk untouched, but are no longer treated as browsable assets. The archive (grid/calendar) already only carried media; now the whole UI is consistent with that.<br>
+  **所有视图现在只显示图片和视频。** 非媒体文件（`.json` / `.txt` / `.py` / `.exe` …）不再占位——文件夹视图网格、整文件夹下载清单和任何列表里都不再出现；文件本体留在磁盘上原样不动，但不再被当作可浏览资产。归档（网格/日历）原本就只收媒体，现在整个界面与之一致。
+
+### Added · 新增
+
+- **No blank frames when opening a preview.** Both previews now paint the already-cached thumbnail (scaled, not stretched) plus a small "loading" chip first, then swap in the real image or video seamlessly — the chip drops the moment the media is ready, and stays visible if it fails, so you never see an empty frame.<br>
+  **打开预览不再出现白屏。** 两个预览先铺已缓存的缩略图（等比缩放、不拉伸）与"加载中"角标，原图/原视频就绪后无缝替换；角标在媒体就绪时自动消失，加载失败则保留，不再出现整块空白。
+- **Videos start faster.** When you open a preview, the video next to it is warmed by fetching just its first 64 KB (a `Range` request) in the background, so playback doesn't start from a cold connection; the request is cancelled the moment you close the preview.<br>
+  **视频起播更快。** 打开预览时，相邻视频会通过后台只取前 64KB（`Range` 请求）预热，播放不再从冷连接开始；关闭预览时该请求立即中止。
+- **Polling no longer interrupts your scroll.** The 8-second refresh now swaps data without rebuilding the whole grid — it keeps your scroll position, loaded images and multi-select intact, and only re-renders when you change views yourself.<br>
+  **轮询不再打断滚动。** 8 秒自动刷新只换数据、不再整格重建 DOM，滚动位置、已加载图片和多选状态全部保留；整格重绘只发生在你自己切换视图时。
+- **Opening a preview prefetches the batch.** On opening the grid preview, the next few images (up to 6, images only) are prefetched in the background so clicking around them is instant; already-fetched ones are not re-requested.<br>
+  **打开预览即预取一批。** 打开网格预览时，后台会预取接下来最多 6 张图片（只图片、不含视频），之后点击这些卡片即可秒显；已预取的不会重复请求。
+
 ## [1.3.4] - 2026-11-11
 
 ### Fixed · 修复

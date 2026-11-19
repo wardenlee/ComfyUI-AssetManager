@@ -44,6 +44,10 @@ An in-panel **asset manager** for ComfyUI that auto-archives every image/video y
   **面板记住位置 & 清理旧产物** —— 视图/筛选/文件夹/滚动位置重开自动恢复；「清理旧产物」按天数列出只读候选清单，确认后把所选条目连同 output 源文件移入回收站。
 - **One video, one entry** — when a node writes a video and post-processing rewrites the same file, the library keeps only the newest playable version; superseded same-source entries are retired into the trash automatically (restorable).<br>
   **一个视频一条归档** —— 节点先写视频、后处理重写同一文件时，库里只保留最新可播放版本；被替代的同源条目自动移入回收站（可恢复）。
+- **Images and videos only — everywhere** — non-media files (`.json` / `.txt` / `.py` / `.exe` …) never take a slot in any list or folder download; they stay on disk, but the panel is purely your generated images and videos.<br>
+  **处处只列图片与视频** —— 非媒体文件（`.json` / `.txt` / `.py` / `.exe` …）不再占位，任何列表与整文件夹下载里都不出现；文件本体留在盘上，面板只呈现你生成的图与视频。
+- **Instant previews** — opening a preview never shows a blank frame: the cached thumbnail appears instantly and the full image/video swaps in seamlessly. Neighbouring videos are warmed with a 64 KB range request, the next few images are prefetched, and the 8-second refresh updates data without rebuilding the grid (scroll and selection stay put).<br>
+  **预览秒开** —— 打开预览不再白屏：已缓存的缩略图立刻显示，原图/视频就绪后无缝替换；相邻视频用 64KB 范围请求预热，后续几张图片后台预取；8 秒自动刷新只换数据、不重建网格（滚动与选中都保持）。
 - **Preview & reproduce** — view full-size images / play videos, copy prompt, download the file itself (the original output file in the folder view, the archived media copy in the grid/calendar views).<br>
   **预览与复现** — 点开看大图/播视频、复制提示词、下载文件本体（文件夹视图里是 output 的原始文件，网格/日历里是归档库中的媒体副本）。
 - **Preview navigation** — inside the large-image preview press `←` / `→` (or the on-screen arrows) to flip through the current batch without closing it; wraps around, shows `n / total`, `Esc` closes, adjacent images are preloaded. The preview dialog is now as tall as the main panel and ~30% wider; the arrows sit outside the image, close to the panel edges.<br>

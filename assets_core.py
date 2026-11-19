@@ -1801,6 +1801,10 @@ def list_output(output_dir, rel="", archive_dir=None, open_state=None, exclude_d
             continue
         ext = Path(name).suffix.lower()
         kind = "image" if ext in IMAGE_EXT else ("video" if ext in VIDEO_EXT else "other")
+        # v1.3.5: 视图只显示图片/视频 —— 非媒体文件(.json/.txt/.py 等)不再占位
+        # (文件本体原样留盘, 只是不出现在任何列表里; 见契约 §15)
+        if kind == "other":
+            continue
         run = index.get(child_rel) or {}
         # v1.3.1: 归档状态角标 —— archived=库中有该文件的归档条目; missing-info=从未归档。
         # (broken 态不可达: index 来自 list_runs, 坏条目已被 v1.2.7 隐藏, 孤儿检测归体检/修复)
@@ -1989,6 +1993,9 @@ def list_output_files(output_dir, rel="", max_files=5000, exclude_dirs=None):
             try:
                 child_rel = fp.relative_to(root).as_posix()
             except ValueError:
+                continue
+            # v1.3.5: 下载清单只含图片/视频 —— 非媒体文件不占位(见契约 §15)
+            if _kind_of(nm) == "other":
                 continue
             files.append({"rel": child_rel, "name": nm, "kind": _kind_of(nm),
                           "size": int(st.st_size), "mtime": _iso_ts(st.st_mtime)})
