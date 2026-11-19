@@ -256,6 +256,8 @@ app.registerExtension({
       "新建文件夹": "New folder",
       "新名称:": "New name:",
       "文件夹加载失败: ": "Failed to load folder: ",
+      "原文件夹已不存在，已回到根目录": "That folder no longer exists — back to the root",
+      "目录: ": "Folder: ",
       "文件夹树加载失败: ": "Failed to load folder tree: ",
       "（文件夹过多，仅显示部分）": "(too many folders — list truncated)",
       "新建失败: ": "Create failed: ",
@@ -1111,6 +1113,12 @@ app.registerExtension({
           if (sub > 0) msg += LANG === "zh" ? ("，共 " + sub + " 个子文件夹，点左侧进入") : (" — " + sub + " sub-folder(s), pick one on the left");
         }
         fGrid.appendChild($el("div.asm-empty", { textContent: msg }));
+        // v1.3.6: 空目录时把"当前实际路径"摆出来 —— 输出目录配错/切错时一眼能看见
+        if (folderData.abs) {
+          const sub = $el("div", { textContent: t("目录: ") + folderData.abs });
+          sub.style.cssText = "font-size:11px;color:#888;margin-top:6px;word-break:break-all;text-align:center;max-width:86%";
+          fGrid.appendChild(sub);
+        }
         return;
       }
       for (const f of files) renderFileCard(f);
@@ -1153,7 +1161,20 @@ app.registerExtension({
       try {
         const res = await fetch("./asset/list_output?path=" + encodeURIComponent(target));
         const d = await res.json();
-        if (!d.ok) { statusMsg(t("文件夹加载失败: ") + (terr(d.error) || "")); return; }
+        if (!d.ok) {
+          // v1.3.6: 记忆里的 folderPath 可能已被改名/删除, 或输出目录换了 —— 回根目录重试,
+          // 不让右栏停在空白(用户看到的就是"文件夹视图什么都没有")
+          if (target) {
+            folderPath = "";
+            savePanelState();
+            statusMsg(t("原文件夹已不存在，已回到根目录"));
+            return loadFolder("");
+          }
+          statusMsg(t("文件夹加载失败: ") + (terr(d.error) || ""));
+          folderData = { path: "", parent: null, dirs: [], files: [], abs: "" };
+          renderFolder();
+          return;
+        }
         const next = d.path || "";
         if (next !== folderPath) { selected.clear(); selAnchor = null; }
         folderPath = next;

@@ -14,6 +14,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added · 新增
 
+- **Folder view recovers instead of going blank.** If the remembered folder no longer exists (renamed, deleted, or the output directory was changed), the view now falls back to the root and says so; an empty folder also prints its real absolute path, so a mis-configured output directory is visible at a glance.<br>
+  **文件夹视图不再空白。** 记忆的目录若已不存在（改名/删除/换了输出目录），自动回到根目录并提示；空目录会显示真实绝对路径，输出目录配错一眼可见。
 - **Hover a video card to preview it in place.** After 450 ms the card plays the video muted and looped; moving away or opening the preview stops it immediately. Finding the right clip no longer requires opening them one by one and remembering index numbers.<br>
   **悬停卡片原地试播。** 悬停 450ms 后卡片静音循环播放；移开或打开预览立刻停止。找视频不用再一个一个点开、靠记序号和位置。
 - **Existing videos are covered too.** Posters are generated lazily on first view, so the videos already in your library (archived before this fix, without `thumb.jpg`) get their preview as you scroll — no re-archive needed.<br>
