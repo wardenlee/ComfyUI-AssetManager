@@ -5,6 +5,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 > 本文件记录 **ComfyUI-AssetManager** 的所有重要改动，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.3.6] - 2026-11-19
+
+### Fixed · 修复
+
+- **Videos finally show a picture in every view.** Root cause: `ffmpeg` was configured as an empty string by default, and `resolve_exe("")` returned `None` — so no video thumbnail (and no video metadata) was ever produced. The archived views then fell back to `<img src="clip.mp4">` (broken image) and the folder view to `<video preload="metadata">` (never paints a frame), i.e. a black or blank card for every video. `ffmpeg` is now auto-detected (configured path → `PATH` → the `imageio-ffmpeg` bundle), and a new on-demand poster endpoint (`GET /asset/thumb?src=arch|out&p=…`) extracts the first frame for **any** video, archives or not, caching it by path+size+mtime. If the server cannot produce one, the browser grabs the frame with `<video>`+canvas, so a card always has a picture.<br>
+  **视频在所有视图里终于有画面了。** 根因：`ffmpeg` 默认配置为空串，而 `resolve_exe("")` 直接返回 `None` —— 视频缩略图（以及视频元数据）从来就没生成过。归档视图退化成 `<img src="clip.mp4">`（破图），文件夹视图退化成 `<video preload="metadata">`（永远不出帧），所以每条视频都是黑块/空白卡片。现在 `ffmpeg` 自动探测（配置路径 → `PATH` → `imageio-ffmpeg` 自带包），并新增按需封面接口 `GET /asset/thumb?src=arch|out&p=…`：**任何**视频（无论是否已归档）都能抽首帧，按「路径+大小+mtime」落盘缓存；服务端生成不了时浏览器用 `<video>`+canvas 截帧兜底，卡片一定有画面。
+
+### Added · 新增
+
+- **Hover a video card to preview it in place.** After 450 ms the card plays the video muted and looped; moving away or opening the preview stops it immediately. Finding the right clip no longer requires opening them one by one and remembering index numbers.<br>
+  **悬停卡片原地试播。** 悬停 450ms 后卡片静音循环播放；移开或打开预览立刻停止。找视频不用再一个一个点开、靠记序号和位置。
+- **Existing videos are covered too.** Posters are generated lazily on first view, so the videos already in your library (archived before this fix, without `thumb.jpg`) get their preview as you scroll — no re-archive needed.<br>
+  **存量视频同样生效。** 封面在第一次看到时按需生成，本修复之前归档、没有 `thumb.jpg` 的老视频滚动到时就会补上，不需要重新归档。
+
 ## [1.3.5] - 2026-11-19
 
 ### Changed · 改动

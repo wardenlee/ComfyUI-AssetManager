@@ -24,6 +24,8 @@ const STYLE = `
 .asm-card .selmark { position:absolute; top:6px; right:6px; width:22px; height:22px; border-radius:50%; background:#5b8cff; color:#fff; font-size:13px; display:flex; align-items:center; justify-content:center; z-index:2; }
 .asm-card img { width:100%; height:100%; object-fit:cover; display:block; }
 .asm-card .play { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:42px; height:42px; border-radius:50%; background:rgba(0,0,0,.6); border:2px solid rgba(255,255,255,.7); color:#fff; display:flex; align-items:center; justify-content:center; font-size:16px; pointer-events:none; }
+.asm-card .m video.asm-hover { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; background:#000; z-index:1; }
+.asm-card .badge, .asm-card .play, .asm-card .selmark { z-index:2; }
 .asm-card .badge { position:absolute; top:6px; left:6px; background:rgba(0,0,0,.65); color:#fff; font-size:10px; padding:1px 7px; border-radius:10px; }
 .asm-card .badge.warn { top:6px; left:6px; margin-top:18px; background:rgba(150,110,0,.85); color:#ffe9a8; }
 .asm-card .meta { padding:7px 9px; }
@@ -489,6 +491,82 @@ app.registerExtension({
       return await res.json();
     }
     function outUrl(rel) { return "./asset/output_file?p=" + encodeURIComponent(rel); }
+
+    // ---------- v1.3.6: 视频封面 + 悬停试播 ----------
+    // 后端 /asset/thumb 用 ffmpeg 抽首帧并落盘缓存(不依赖是否已归档);
+    // 后端生成不出来时, 前端用 <video> + canvas 兜底截帧, 保证卡片一定有画面。
+    function posterUrlArch(dir, media) { return "./asset/thumb?src=arch&p=" + encodeURIComponent(dir + "/" + media); }
+    function posterUrlOut(rel) { return "./asset/thumb?src=out&p=" + encodeURIComponent(rel); }
+    const posterCache = {};
+    function capturePoster(url) {
+      if (posterCache[url] !== undefined) return Promise.resolve(posterCache[url]);
+      return new Promise((resolve) => {
+        let done = false;
+        const v = document.createElement("video");
+        v.muted = true; v.playsInline = true; v.preload = "auto";
+        const timer = setTimeout(() => finish(""), 8000);
+        function finish(data) {
+          if (done) return;
+          done = true; clearTimeout(timer);
+          posterCache[url] = data || "";
+          try { v.removeAttribute("src"); v.load(); } catch (e) {}
+          resolve(data || "");
+        }
+        function grab() {
+          try {
+            const vw = v.videoWidth || 0, vh = v.videoHeight || 0;
+            const w = 480, h = vw && vh ? Math.max(1, Math.round(w * vh / vw)) : 270;
+            const c = document.createElement("canvas");
+            c.width = w; c.height = h;
+            c.getContext("2d").drawImage(v, 0, 0, w, h);
+            finish(c.toDataURL("image/jpeg", 0.72));
+          } catch (e) { finish(""); }
+        }
+        v.addEventListener("loadeddata", () => { try { v.currentTime = 0.15; } catch (e) { grab(); } }, { once: true });
+        v.addEventListener("seeked", grab, { once: true });
+        v.addEventListener("error", () => finish(""), { once: true });
+        v.src = url;
+      });
+    }
+    function imgWithPoster(src, fallbackUrl) {
+      const im = $el("img", { loading: "lazy", decoding: "async" });
+      im.src = src;
+      if (fallbackUrl) {
+        im.onerror = () => {
+          if (im.dataset.posterFb) return;
+          im.dataset.posterFb = "1";
+          capturePoster(fallbackUrl).then((d) => { if (d) im.src = d; });
+        };
+      }
+      return im;
+    }
+    let hoverVid = null, hoverTimer = null;
+    function stopHoverPlay() {
+      if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
+      if (hoverVid) {
+        try { hoverVid.pause(); hoverVid.removeAttribute("src"); hoverVid.load(); } catch (e) {}
+        try { hoverVid.remove(); } catch (e) {}
+        hoverVid = null;
+      }
+    }
+    // 悬停 450ms 才开始试播(避免扫过一排卡片就乱响/乱下流量), 离开立刻停
+    function bindHoverPlay(card, videoUrl, enabled) {
+      if (!enabled || !videoUrl) return;
+      card.addEventListener("mouseenter", () => {
+        if (hoverTimer) clearTimeout(hoverTimer);
+        hoverTimer = setTimeout(() => {
+          const m = card.querySelector(".m");
+          if (!m || hoverVid) return;
+          const v = $el("video.asm-hover", { muted: true, loop: true, playsInline: true, preload: "metadata" });
+          v.muted = true; v.loop = true; v.playsInline = true;
+          v.addEventListener("canplay", () => { try { v.play().catch(() => {}); } catch (e) {} }, { once: true });
+          m.appendChild(v);
+          v.src = videoUrl;
+          hoverVid = v;
+        }, 450);
+      });
+      card.addEventListener("mouseleave", stopHoverPlay);
+    }
     // v1.2.6: 文件夹视图里以文件名判定(卡片/预览用), gif 同样按图片渲染
     function isGifRel(n) { return isGifName(n); }
     function isVideoRenderF(f) { return f.kind === "video" && !isGifName(f.name); }
@@ -737,10 +815,14 @@ app.registerExtension({
     function renderCard(r, container, list) {
       const card = $el("div.asm-card");
       if (selected.has(r.dir)) card.classList.add("selected");
-      const thumb = r.thumb ? mediaUrl(r.dir, r.thumb) : mediaUrl(r.dir, r.media);
+      const full = mediaUrl(r.dir, r.media);
       const isVid = isVideoRender(r);
+      // v1.3.6: 视频一律用"封面帧"当卡片图(poster); 归档没生成 thumb 时走按需接口
+      const thumbEl = isVid
+        ? imgWithPoster(r.thumb ? mediaUrl(r.dir, r.thumb) : posterUrlArch(r.dir, r.media), full)
+        : $el("img", { src: full, loading: "lazy" });
       card.appendChild($el("div.m", {}, [
-        $el("img", { src: thumb, loading: "lazy" }),
+        thumbEl,
         isVid ? $el("div.play", { textContent: "▶" }) : null,
         $el("span.badge", { textContent: isVid ? t("视频") : t("图") }),
         selected.has(r.dir) ? $el("div.selmark", { textContent: "✓" }) : null,
@@ -750,6 +832,8 @@ app.registerExtension({
         $el("div.pr", { textContent: (r.positive || "").slice(0, 160) || t("(未检测到提示词)") }),
         r.models && r.models.length ? $el("div.mo", { textContent: r.models.join(" · ") }) : null,
       ].filter(Boolean)));
+      // v1.3.6: 悬停试播 —— 不用点开就能判断这条视频是不是要找的
+      bindHoverPlay(card, full, isVid);
       card.onclick = (e) => {
         const shift = !!(e && e.shiftKey);
         // Shift+点击: 没开多选就自动进多选; 已开则从锚点连选到这一张
@@ -971,11 +1055,13 @@ app.registerExtension({
       const on = selected.has(f.rel);
       const isVid = isVideoRenderF(f);
       const card = $el("div.asm-card.asm-fcard" + (on ? ".selected" : ""));
-      const thumbSrc = (f.run_dir && f.thumb) ? mediaUrl(f.run_dir, f.thumb) : outUrl(f.rel);
+      const full = outUrl(f.rel);
       let thumbEl;
       if (f.kind === "other") thumbEl = $el("div.pico", { textContent: "📄" });
-      else if (isVid && !(f.run_dir && f.thumb)) thumbEl = $el("video", { src: thumbSrc, muted: true, playsinline: true, preload: "metadata" });
-      else thumbEl = $el("img", { src: thumbSrc, loading: "lazy" });
+      else if (isVid) {
+        // v1.3.6: 视频卡片显示真实首帧(归档 thumb 优先, 否则按需生成), 不再是黑块
+        thumbEl = imgWithPoster((f.run_dir && f.thumb) ? mediaUrl(f.run_dir, f.thumb) : posterUrlOut(f.rel), full);
+      } else thumbEl = $el("img", { src: full, loading: "lazy" });
       card.appendChild($el("div.m", {}, [
         thumbEl,
         isVid ? $el("div.play", { textContent: "▶" }) : null,
@@ -989,6 +1075,8 @@ app.registerExtension({
         $el("div.pr", { textContent: (f.created || "") + (f.size ? " · " + fmtSize(f.size) : "") }),
         f.opened ? $el("div.mo", { textContent: t("打开: ") + f.opened }) : null,
       ].filter(Boolean)));
+      // v1.3.6: 悬停试播(文件夹视图同样适用)
+      bindHoverPlay(card, full, isVid);
       card.onclick = (ev) => {
         const shift = !!(ev && ev.shiftKey);
         if (!multi && !shift) {
@@ -1187,6 +1275,7 @@ app.registerExtension({
       } catch (e) { statusMsg(t("移动失败: ") + (e && e.message ? e.message : e)); }
     }
     function openOutputFile(f) {
+      stopHoverPlay();
       // v1.2.2: 传入当前显示列表 → 文件夹视图里也能 ←/→ 翻页(与网格/日历一致)
       // v1.2.7: 翻页列表只含可预览的媒体(图/视频) —— 📄 其他文件不进翻页序列
       openOutputPreview(f, previewFolderFiles());
@@ -1385,6 +1474,7 @@ app.registerExtension({
     }
 
     function openPreview(r, listArg) {
+      stopHoverPlay();
       // 切换范围 = 用户当前看到的那一批(网格=筛选结果; 日历=当天列表)
       const list = (Array.isArray(listArg) && listArg.length ? listArg : sortRuns(filtered(runs))).slice();
       let idx = list.findIndex(x => x.dir === r.dir);
@@ -1425,7 +1515,9 @@ app.registerExtension({
         mediaBox.innerHTML = "";
         const media = previewMedia(cur);
         // v1.3.5 ①: 先放缩略图占位, 原图/视频就绪后无缝替换(零白屏)
-        const thumbSrc = cur.thumb ? mediaUrl(cur.dir, cur.thumb) : "";
+        // v1.3.6: 视频没有归档缩略图时用按需封面帧占位, 不再白屏/黑屏
+        const thumbSrc = cur.thumb ? mediaUrl(cur.dir, cur.thumb)
+          : (isVideoRender(cur) ? posterUrlArch(cur.dir, cur.media) : "");
         mediaBox.appendChild(placeholderBox(thumbSrc, media, media.tagName === "VIDEO"));
         // v1.2.6: 视频放不出来(编码/容器不支持)时给明确提示, 不再黑屏
         if (media.tagName === "VIDEO") {
@@ -1528,7 +1620,9 @@ app.registerExtension({
         mediaBox.innerHTML = "";
         const media = mediaFor(cur);
         // v1.3.5 ①: 文件夹视图优先用归档缩略图占位, 无则留空等原图(零白屏)
-        const thumbSrc = (cur.run_dir && cur.thumb) ? mediaUrl(cur.run_dir, cur.thumb) : "";
+        // v1.3.6: 视频没有归档缩略图时用按需封面帧占位
+        const thumbSrc = (cur.run_dir && cur.thumb) ? mediaUrl(cur.run_dir, cur.thumb)
+          : (isVideoRenderF(cur) ? posterUrlOut(cur.rel) : "");
         mediaBox.appendChild(placeholderBox(thumbSrc, media, media.tagName === "VIDEO"));
         // v1.2.6: 视频放不出来(编码/容器不支持)时给明确提示, 不再黑屏
         if (media.tagName === "VIDEO") {

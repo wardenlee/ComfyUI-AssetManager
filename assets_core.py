@@ -6,11 +6,13 @@ ComfyUI 资产管理插件核心库
 索引列表 / 删除 / 备份 / 媒体文件安全读取。
 """
 
+import hashlib
 import json
 import os
 import re
 import shutil
 import subprocess
+import threading
 import time
 import zipfile
 from datetime import datetime
@@ -235,7 +237,8 @@ def extract_image_metadata(path):
 
 
 def extract_video_metadata(path, cfg):
-    fp = resolve_exe(cfg.get("ffprobe"))
+    # v1.3.6: cfg 留空时按 PATH 自动探测(原实现留空直接返回, 视频元数据永远抽不到)
+    fp = resolve_exe((cfg or {}).get("ffprobe") or "ffprobe")
     if not fp:
         return None, None
     try:
@@ -311,8 +314,27 @@ def parse_prompt_graph(graph):
 # 归档
 # ---------------------------------------------------------------------------
 
+def find_ffmpeg(cfg):
+    """v1.3.6: ffmpeg 定位 —— cfg 显式路径 > PATH > imageio-ffmpeg 自带静态包
+
+    原实现里 cfg.ffmpeg 留空(resolve_exe 对空串返回 None) → 默认配置下
+    视频缩略图 / 视频元数据全部生成不出来, 列表里视频永远是黑块或破图。
+    """
+    fp = (cfg or {}).get("ffmpeg") or ""
+    exe = resolve_exe(fp) if fp else None
+    if not exe:
+        exe = shutil.which("ffmpeg")
+    if not exe:
+        try:
+            import imageio_ffmpeg  # ComfyUI 生态常见依赖, 无系统 ffmpeg 时兜底
+            exe = imageio_ffmpeg.get_ffmpeg_exe()
+        except Exception:
+            exe = None
+    return exe
+
+
 def make_video_thumb(src, dst, cfg):
-    ff = resolve_exe(cfg.get("ffmpeg"))
+    ff = find_ffmpeg(cfg)
     if not ff:
         return None
     width = int(cfg.get("thumb_width", 480))
@@ -331,6 +353,76 @@ def make_video_thumb(src, dst, cfg):
         if dst.exists():
             try:
                 dst.unlink()
+            except Exception:
+                pass
+    return None
+
+
+# ---------------------------------------------------------------------------
+# v1.3.6: 视频封面(海报帧) —— 按需生成 + 磁盘缓存, 不依赖归档
+# ---------------------------------------------------------------------------
+
+POSTER_CACHE_VER = "p1"
+_POSTER_SEM = threading.BoundedSemaphore(2)
+
+
+def poster_cache_file(media_path, cache_dir):
+    """封面缓存路径: 源文件 路径+大小+mtime 变化即换新键, 旧缓存自然失效"""
+    p = Path(media_path)
+    try:
+        st = p.stat()
+        key = "%s|%s|%s|%s" % (POSTER_CACHE_VER, p.resolve(), st.st_size, st.st_mtime_ns)
+    except OSError:
+        return None
+    name = hashlib.sha1(key.encode("utf-8", "replace")).hexdigest() + ".jpg"
+    return Path(cache_dir) / name
+
+
+def ensure_video_poster(media_path, cache_dir, cfg):
+    """v1.3.6: 按需生成视频封面帧, 返回 jpg 路径; 失败返回 None(前端再走 canvas 兜底)"""
+    dst = poster_cache_file(media_path, cache_dir)
+    if dst is None:
+        return None
+    try:
+        if dst.is_file() and dst.stat().st_size > 0:
+            return dst
+    except OSError:
+        pass
+    ff = find_ffmpeg(cfg)
+    if not ff:
+        return None
+    try:
+        width = max(160, min(1280, int((cfg or {}).get("thumb_width", 480))))
+    except Exception:
+        width = 480
+    # 同一时刻最多 2 个 ffmpeg, 避免一次滚屏把 CPU 打满
+    with _POSTER_SEM:
+        try:
+            if dst.is_file() and dst.stat().st_size > 0:
+                return dst
+        except OSError:
+            pass
+        try:
+            dst.parent.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            return None
+        tmp = dst.with_name("%s.%d.part.jpg" % (dst.stem, threading.get_ident()))
+        for ss in ("0.3", "0", "1"):
+            try:
+                r = subprocess.run(
+                    [ff, "-y", "-hide_banner", "-loglevel", "error",
+                     "-ss", ss, "-i", str(media_path), "-frames:v", "1",
+                     "-vf", "scale=%d:-2" % width, "-q:v", "4", str(tmp)],
+                    capture_output=True, timeout=45,
+                )
+                if r.returncode == 0 and tmp.is_file() and tmp.stat().st_size > 0:
+                    os.replace(str(tmp), str(dst))
+                    return dst
+            except Exception:
+                pass
+            try:
+                if tmp.exists():
+                    tmp.unlink()
             except Exception:
                 pass
     return None

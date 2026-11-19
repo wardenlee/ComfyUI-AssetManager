@@ -20,7 +20,7 @@ WEB_DIRECTORY = "web"
 NODE_CLASS_MAPPINGS = {}
 NODE_DISPLAY_NAME_MAPPINGS = {}
 
-__version__ = "1.3.5"
+__version__ = "1.3.6"
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _cfg = assets_core.load_config(BASE_DIR)
@@ -40,6 +40,18 @@ try:
         folder_paths.set_output_directory(os.path.abspath(_out))
 except Exception:
     folder_paths = None
+
+# v1.3.6: 视频封面缓存目录(按需生成, 不写进 output/archive, 扫描不会看到它)
+try:
+    _user_dir = folder_paths.get_user_directory() if folder_paths is not None else ""
+except Exception:
+    _user_dir = ""
+THUMB_CACHE_DIR = os.path.join(_user_dir or BASE_DIR, "asset_manager_thumbs")
+try:
+    os.makedirs(THUMB_CACHE_DIR, exist_ok=True)
+except Exception:
+    THUMB_CACHE_DIR = os.path.join(BASE_DIR, "thumbs")
+    os.makedirs(THUMB_CACHE_DIR, exist_ok=True)
 
 
 def _current_output_dir():
@@ -284,6 +296,34 @@ async def asset_output_file(request):
     if not p:
         return web.Response(status=404, text="not found")
     return web.FileResponse(p)
+
+
+@PromptServer.instance.routes.get("/asset/thumb")
+async def asset_thumb(request):
+    """v1.3.6: 视频封面帧 —— 任何视频(归档/未归档)都能出图, 结果落盘缓存
+
+    src=arch 走归档目录, src=out 走当前输出目录; 只接受视频扩展名。
+    生成失败返回 404, 前端再用 <video>+canvas 兜底截帧。
+    """
+    src = (request.rel_url.query.get("src") or "out").lower()
+    rel = request.rel_url.query.get("p", "")
+    if src == "arch":
+        p = assets_core.safe_media_path(_arch, rel)
+    else:
+        p = assets_core.safe_output_path(_current_output_dir(), rel)
+    if not p or p.suffix.lower() not in assets_core.VIDEO_EXT:
+        return web.Response(status=404, text="not found")
+
+    def _go():
+        return assets_core.ensure_video_poster(p, THUMB_CACHE_DIR, _cfg)
+
+    try:
+        poster = await asyncio.to_thread(_go)
+    except Exception:
+        poster = None
+    if not poster:
+        return web.Response(status=404, text="no poster", headers={"Cache-Control": "no-store"})
+    return web.FileResponse(poster, headers={"Cache-Control": "public, max-age=604800"})
 
 
 @PromptServer.instance.routes.post("/asset/touch_open")

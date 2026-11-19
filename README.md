@@ -48,6 +48,7 @@ An in-panel **asset manager** for ComfyUI that auto-archives every image/video y
   **处处只列图片与视频** —— 非媒体文件（`.json` / `.txt` / `.py` / `.exe` …）不再占位，任何列表与整文件夹下载里都不出现；文件本体留在盘上，面板只呈现你生成的图与视频。
 - **Instant previews** — opening a preview never shows a blank frame: the cached thumbnail appears instantly and the full image/video swaps in seamlessly. Neighbouring videos are warmed with a 64 KB range request, the next few images are prefetched, and the 8-second refresh updates data without rebuilding the grid (scroll and selection stay put).<br>
   **预览秒开** —— 打开预览不再白屏：已缓存的缩略图立刻显示，原图/视频就绪后无缝替换；相邻视频用 64KB 范围请求预热，后续几张图片后台预取；8 秒自动刷新只换数据、不重建网格（滚动与选中都保持）。
+- **视频有封面，还能悬停试播** —— 每个视频卡片显示真实首帧（服务端按需抽帧并落盘缓存，存量视频滚动到就补，无需重新归档；服务端没有 ffmpeg 时浏览器截帧兜底）；悬停 450ms 原地静音循环播放，移开即停。不用再逐个点开、靠记序号找视频。
 - **Preview & reproduce** — view full-size images / play videos, copy prompt, download the file itself (the original output file in the folder view, the archived media copy in the grid/calendar views).<br>
   **预览与复现** — 点开看大图/播视频、复制提示词、下载文件本体（文件夹视图里是 output 的原始文件，网格/日历里是归档库中的媒体副本）。
 - **Preview navigation** — inside the large-image preview press `←` / `→` (or the on-screen arrows) to flip through the current batch without closing it; wraps around, shows `n / total`, `Esc` closes, adjacent images are preloaded. The preview dialog is now as tall as the main panel and ~30% wider; the arrows sit outside the image, close to the panel edges.<br>
@@ -110,7 +111,7 @@ Download the repo zip and extract it into `ComfyUI/custom_nodes/`, keeping the f
 下载本仓库 zip，解压到 `ComfyUI/custom_nodes/` 下，目录名保持 `ComfyUI-AssetManager`。
 
 > Dependencies: Python ≥ 3.9 and `Pillow` (bundled with ComfyUI). Video metadata extraction and thumbnails require `ffmpeg`/`ffprobe` (bundled with the portable ComfyUI, or on system PATH, or specified in `config.json`).<br>
-> 依赖：Python ≥ 3.9，`Pillow`（ComfyUI 已自带）。视频元数据提取与缩略图需要 `ffmpeg`/`ffprobe`（ComfyUI 便携版自带；也可在系统 PATH 里，或在 `config.json` 里指定路径）。
+> 依赖：Python ≥ 3.9，`Pillow`（ComfyUI 已自带）。视频元数据提取与封面帧需要 `ffmpeg`/`ffprobe`：优先用 `config.json` 里的路径，留空则自动探测系统 `PATH`，再退到 `imageio-ffmpeg` 自带的静态包；都没有时视频卡片由浏览器截帧兜底。
 
 ## 🚀 Usage · 使用
 
