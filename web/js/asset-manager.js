@@ -157,7 +157,6 @@ app.registerExtension({
       "(未检测到提示词)": "(no prompt detected)",
       "没有匹配的产物": "No matching assets",
       "当天没有产物": "No assets on that day",
-      "当天没有归档产物": "No assets on this day",
       "当天没有匹配当前筛选的产物": "No matching assets on this day",
       "点选日期查看当天产物": "Click a date to view its assets",
       "来源: ": "Source: ",
@@ -189,19 +188,12 @@ app.registerExtension({
       "未知错误": "unknown error",
       "留空=使用 ComfyUI 默认 output": "Leave empty = ComfyUI default output",
       "输出目录": "Output directory",
-      "归档库目录": "Archive directory",
       "下载目录": "Download directory",
-      "自动归档新产物": "Auto-archive new assets",
       "自动下载新产物": "Auto-download new assets",
-      "归档安装前已有的产物": "Archive assets already present on install",
-      "显示归档库目录": "Show the archive library directory",
-      "显示归档库目录（不勾选=归档库不可见不可操作，备份与网格/日历照常）": "Show the archive library (off = library hidden & read-only; backups and grid/calendar keep working)",
-      "归档库已隐藏（资产设置 → 显示归档库目录）": "Archive library is hidden (toggle it in Asset settings → Show the archive library directory)",
       "缩略图宽度(px)": "Thumbnail width (px)",
       "扫描间隔(秒)": "Scan interval (sec)",
       "浏览…": "Browse…",
       "保存设置": "Save settings",
-      "改归档/下载目录后新产物进入新目录, 旧数据保留; 输出目录切换重启 ComfyUI 后仍生效; 自动归档/自动下载开关和扫描间隔即时生效。下载目录: 点「浏览…」可在系统对话框选择本地目录（授权后下载/自动下载直接写入该目录, 无需经过浏览器下载; 未授权时使用浏览器默认下载目录）。": "After changing the archive/download directory, new assets go to the new directory (old data stays). Output directory changes persist across ComfyUI restarts. Auto-archive/auto-download and scan interval take effect immediately. Download folder: click Browse to pick a local folder in the system dialog (after grant, downloads/auto-downloads are written directly into it, bypassing the browser download flow; otherwise the browser default folder is used).",
       "✅ 设置已保存": "✅ Settings saved",
       "📁 选择目录": "📁 Select directory",
       "（请选择磁盘）": "(select a drive)",
@@ -274,7 +266,6 @@ app.registerExtension({
       "打开: ": "Opened: ",
       "关闭": "Close",
       "该文件无法预览": "This file cannot be previewed",
-      "该文件未归档，没有提示词元数据": "Not archived — no prompt metadata",
       "下载文件": "Download file",
       "浏览器无法播放该视频": "The browser cannot play this video",
       "可用「下载文件」保存后用本地播放器打开": "Use Download file to save it, then open it with a local player",
@@ -284,7 +275,6 @@ app.registerExtension({
       "该产物未携带工作流元数据": "This asset has no workflow metadata",
       "✅ 已保存 workflow.json": "✅ workflow.json saved",
       "体检": "Audit",
-      "归档库体检": "Archive audit",
       "体检中…": "Auditing…",
       "体检失败": "Audit failed",
       "重复来源": "Duplicate sources",
@@ -311,9 +301,6 @@ app.registerExtension({
       "已彻底删除": "Deleted permanently",
       "恢复失败": "Restore failed",
       "回收站加载失败": "Failed to load trash",
-      "已归档": "Archived",
-      "未归档": "Not archived",
-      "归档失效": "Archive broken",
       "修复": "Repair",
       "修复中…": "Repairing…",
       "修复失败": "Repair failed",
@@ -369,8 +356,8 @@ app.registerExtension({
       "Directory not found": "目录不存在",
       "Directory is outside the allowed browse scope": "该目录不在允许浏览范围内",
       "Missing run_id": "缺少 run_id",
-      "Invalid archive path": "非法的归档路径",
-      "Archive entry not found": "未找到该归档条目",
+      "Invalid archive path": "非法的备份路径",
+      "Archive entry not found": "未找到该备份条目",
       "Invalid folder name": "文件夹名非法",
       "Already exists": "已存在同名的文件夹或文件",
       "Cannot rename the output root": "不能改名 output 根目录",
@@ -1577,7 +1564,7 @@ app.registerExtension({
       let idx = list.findIndex(x => x.dir === r.dir);
       if (idx < 0) return;
       if (pv) closePreview();
-      reportOpen("run:" + r.dir); // 打开归档资产的打开时间上报(失败静默)
+      reportOpen("run:" + r.dir); // 打开备份条目的打开时间上报(失败静默)
       // v1.3.5 ④: 后台预取最近 N 张原图(只在图片条目里挑, 不干扰当前预览)
       try { prefetchRunsImages(list); } catch (e) {}
 
@@ -2612,7 +2599,7 @@ app.registerExtension({
 
     // ---------- v1.3.0 回收站(统一软删除) ----------
     const TRASH_KIND_LABELS = {
-      "run": "归档条目",
+      "run": "备份条目",
       "output_file": "文件",
       "output_dir": "文件夹",
     };
