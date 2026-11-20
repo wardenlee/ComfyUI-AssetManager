@@ -156,6 +156,7 @@ app.registerExtension({
       "图": "Img",
       "(未检测到提示词)": "(no prompt detected)",
       "没有匹配的产物": "No matching assets",
+      "当天没有产物": "No assets on that day",
       "当天没有归档产物": "No assets on this day",
       "当天没有匹配当前筛选的产物": "No matching assets on this day",
       "点选日期查看当天产物": "Click a date to view its assets",
@@ -194,6 +195,7 @@ app.registerExtension({
       "自动下载新产物": "Auto-download new assets",
       "归档安装前已有的产物": "Archive assets already present on install",
       "显示归档库目录": "Show the archive library directory",
+      "显示归档库目录（不勾选=网格/日历直接读输出目录，不做任何复制）": "Show the archive library (off = grid & calendar read the output directory directly, nothing is copied)",
       "归档库已隐藏（资产设置 → 显示归档库目录）": "Archive library is hidden (toggle it in Asset settings → Show the archive library directory)",
       "缩略图宽度(px)": "Thumbnail width (px)",
       "扫描间隔(秒)": "Scan interval (sec)",
@@ -480,6 +482,20 @@ app.registerExtension({
     // v1.2.6: .gif 是动图, 必须按 <img> 渲染 —— 塞进 <video> 浏览器直接放不出来(黑屏), 即"无法预览的视频"
     function isGifName(n) { return /\.gif$/i.test(String(n || "")); }
     function isVideoRender(r) { return r.kind === "video" && !isGifName(r.media); }
+
+    // ---------- v1.3.8: 不勾选「显示归档库目录」= 网格/日历直接读 output 目录 ----------
+    // 语义: 关 = 插件不归档(磁盘只留 output 一套) + 网格/日历列 output 里的图片/视频;
+    //       开 = 回到归档库视图(带提示词元数据与归档全套操作)。
+    function archiveShown() {
+      return !!(curConfig && curConfig.config && curConfig.config.show_archive === true);
+    }
+    function isOutRun(r) { return !!r && r.src === "out"; }
+    // 取流统一入口: 归档条目 /asset/file, output 条目 /asset/output_file
+    function runUrl(r) { return isOutRun(r) ? outUrl(r.rel) : mediaUrl(r.dir, r.media); }
+    function runPoster(r) {
+      if (isOutRun(r)) return posterUrlOut(r.rel);
+      return r.thumb ? mediaUrl(r.dir, r.thumb) : posterUrlArch(r.dir, r.media);
+    }
 
     function matches(r, kw) {
       kw = kw.toLowerCase();
@@ -819,11 +835,11 @@ app.registerExtension({
     function renderCard(r, container, list) {
       const card = $el("div.asm-card");
       if (selected.has(r.dir)) card.classList.add("selected");
-      const full = mediaUrl(r.dir, r.media);
+      const full = runUrl(r);
       const isVid = isVideoRender(r);
-      // v1.3.6: 视频一律用"封面帧"当卡片图(poster); 归档没生成 thumb 时走按需接口
+      // v1.3.6: 视频一律用"封面帧"当卡片图(poster); v1.3.8 起 output 条目走 src=out 的封面接口
       const thumbEl = isVid
-        ? imgWithPoster(r.thumb ? mediaUrl(r.dir, r.thumb) : posterUrlArch(r.dir, r.media), full)
+        ? imgWithPoster(runPoster(r), full)
         : $el("img", { src: full, loading: "lazy" });
       card.appendChild($el("div.m", {}, [
         thumbEl,
@@ -833,8 +849,8 @@ app.registerExtension({
       ].filter(Boolean)));
       card.appendChild($el("div.meta", {}, [
         $el("div.nm", { textContent: r.name }),
-        $el("div.pr", { textContent: (r.positive || "").slice(0, 160) || t("(未检测到提示词)") }),
-        r.models && r.models.length ? $el("div.mo", { textContent: r.models.join(" · ") }) : null,
+        $el("div.pr", { textContent: isOutRun(r) ? (fmtSize(r.size) + " · " + (r.time || "")) : ((r.positive || "").slice(0, 160) || t("(未检测到提示词)")) }),
+        isOutRun(r) ? null : (r.models && r.models.length ? $el("div.mo", { textContent: r.models.join(" · ") }) : null),
       ].filter(Boolean)));
       // v1.3.6: 悬停试播 —— 不用点开就能判断这条视频是不是要找的
       bindHoverPlay(card, full, isVid);
@@ -842,7 +858,11 @@ app.registerExtension({
         const shift = !!(e && e.shiftKey);
         // Shift+点击: 没开多选就自动进多选; 已开则从锚点连选到这一张
         if (shift && !multi) { multi = true; setMultiBtns(); statusMsg(t("多选模式: 点击切换选中, Shift+点击连选一段")); }
-        if (!multi) { openPreview(r, list); return; }
+        if (!multi) {
+          // v1.3.8: output 条目没有归档副本/元数据 → 走 output 预览(预览/下载/删除都可用)
+          if (isOutRun(r)) openOutputPreview(r, list); else openPreview(r, list);
+          return;
+        }
         if (shift && selAnchor) {
           const i0 = list.findIndex(x => x.dir === selAnchor);
           const i1 = list.findIndex(x => x.dir === r.dir);
@@ -868,14 +888,12 @@ app.registerExtension({
     }
 
     function renderGrid() {
-      // v1.3.7: 归档库隐藏时, 网格视图只显示隐藏空态(即使 runs 里有残留数据也不渲染)
-      const hidden = !(curConfig && curConfig.config && curConfig.config.show_archive === true);
-      const list = hidden ? [] : sortRuns(filtered(runs));
+      // v1.3.8: 不勾选时 runs 本身就是 output 目录的媒体清单 → 不再做"归档库已隐藏"空态
+      const list = sortRuns(filtered(runs));
       gridEl.innerHTML = "";
       countEl.textContent = list.length + " / " + runs.length;
       if (!list.length) {
-        if (hidden) gridEl.appendChild($el("div.asm-empty", { textContent: t("归档库已隐藏（资产设置 → 显示归档库目录）") }));
-        else gridEl.appendChild($el("div.asm-empty", { textContent: t("没有匹配的产物") }));
+        gridEl.appendChild($el("div.asm-empty", { textContent: t("没有匹配的产物") }));
         return;
       }
       for (const r of list) renderCard(r, gridEl, list);
@@ -918,13 +936,14 @@ app.registerExtension({
         day.onclick = () => { selDate = dk; renderCal(); };
         calGrid.appendChild(day);
       }
-      // v1.3.7: 归档库隐藏时, 日历视图不给任何计数与条目(空态替代)
-      const hidden = !(curConfig && curConfig.config && curConfig.config.show_archive === true);
-      const base = hidden ? 0 : ((selDate && byDate[selDate]) ? byDate[selDate].length : 0);
-      const list = hidden ? [] : (selDate ? sortRuns(filtered(byDate[selDate] || [])) : []);
+      // v1.3.8: 计数与当天列表直接来自当前数据源(勾选=归档库, 不勾选=output 目录)
+      const base = (selDate && byDate[selDate]) ? byDate[selDate].length : 0;
+      const list = selDate ? sortRuns(filtered(byDate[selDate] || [])) : [];
       let title;
       if (selDate) {
-        title = LANG === "zh" ? (selDate + " · 当天归档 " + base + " 条") : (selDate + " · " + base + " assets");
+        // v1.3.8: 措辞跟数据源走 —— 不勾选时读的是 output 目录, 不是归档库
+        const _unit = archiveShown() ? " 当天归档 " : " 当天产物 ";
+        title = LANG === "zh" ? (selDate + " ·" + _unit + base + " 条") : (selDate + " · " + base + " assets");
       } else {
         title = t("点选日期查看当天产物");
       }
@@ -933,8 +952,7 @@ app.registerExtension({
       }
       calListTitle.innerHTML = title;
       calListCards.innerHTML = "";
-      if (hidden) calListCards.appendChild($el("div.asm-empty", { textContent: t("归档库已隐藏（资产设置 → 显示归档库目录）") }));
-      else if (selDate && base === 0) calListCards.appendChild($el("div.asm-empty", { textContent: t("当天没有归档产物") }));
+      if (selDate && base === 0) calListCards.appendChild($el("div.asm-empty", { textContent: t(archiveShown() ? "当天没有归档产物" : "当天没有产物") }));
       else if (!list.length && selDate) calListCards.appendChild($el("div.asm-empty", { textContent: t("当天没有匹配当前筛选的产物") }));
       else for (const r of list) renderCard(r, calListCards, list);
     }
@@ -1366,9 +1384,9 @@ app.registerExtension({
       updateArchiveBtns();
     }
 
-    // v1.3.7: 归档库隐藏时收起归档专属按钮(体检/回收站/修复/清理旧产物), 界面少噪音; 文件夹视图不受影响
+    // v1.3.8: 归档库没显示时收起归档专属按钮(体检/回收站/修复/清理旧产物), 界面少噪音; 文件夹视图不受影响
     function updateArchiveBtns() {
-      const hidden = !(curConfig && curConfig.config && curConfig.config.show_archive === true);
+      const hidden = !archiveShown();
       [auditBtn, trashBtn, repairBtn, cleanupBtn].forEach((b) => { b.style.display = hidden ? "none" : ""; });
     }
 
@@ -1407,10 +1425,36 @@ app.registerExtension({
     async function batchDelete() {
       if (!selected.size) return;
       const ids = [...selected];
-      const msg = LANG === "zh"
-        ? ("确定要删除选中的 " + ids.length + " 项产物吗?\n\n将同时移走归档副本和 output 中的原始文件。\n(v1.3.0 起移入回收站, 可在回收站恢复)")
-        : ("Permanently delete the selected " + ids.length + " items from disk?\n\nThis also deletes the archive copies and the original files in output. This cannot be undone.");
+      const outMode = !archiveShown();
+      const msg = outMode
+        ? (LANG === "zh"
+          ? ("确定要从硬盘删除选中的 " + ids.length + " 个文件吗?\n\n删除即移入回收站(勾选「显示归档库目录」后可在回收站恢复)。")
+          : ("Delete the selected " + ids.length + " files from disk?\n\nThey go to the trash (restorable after enabling the archive library)."))
+        : (LANG === "zh"
+          ? ("确定要删除选中的 " + ids.length + " 项产物吗?\n\n将同时移走归档副本和 output 中的原始文件。\n(v1.3.0 起移入回收站, 可在回收站恢复)")
+          : ("Permanently delete the selected " + ids.length + " items from disk?\n\nThis also deletes the archive copies and the original files in output. This cannot be undone."));
       if (!confirm(msg)) return;
+      if (outMode) {
+        // v1.3.8: 网格/日历读的是 output → 删除走 output 单文件接口(与文件夹视图同一语义)
+        let done = 0, failed = 0;
+        for (const id of ids) {
+          const r = runs.find(x => x.dir === id);
+          if (!r) { failed += 1; continue; }
+          try {
+            const d = await postJSON("./asset/delete_output_file", { path: r.rel });
+            if (d && d.ok) done += 1; else failed += 1;
+          } catch (e) { failed += 1; }
+        }
+        const delSet = new Set(ids);
+        runs = runs.filter(x => !delSet.has(x.dir));
+        selected.clear();
+        selAnchor = null;
+        rebuildByDate();
+        refresh();
+        statusMsg((LANG === "zh" ? ("已删除 " + done + " 个文件") : ("Deleted " + done + " files"))
+          + (failed ? (LANG === "zh" ? ("（失败 " + failed + " 个）") : (" (failed: " + failed + ")")) : ""));
+        return;
+      }
       const res = await fetch("./asset/delete_batch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ run_ids: ids }) });
       const d = await res.json();
       if (d.ok) {
@@ -1434,7 +1478,7 @@ app.registerExtension({
     let previewCache = {};    // v1.3.5 ④: 已预取的原图 url -> true
 
     function previewMedia(r) {
-      const full = mediaUrl(r.dir, r.media);
+      const full = runUrl(r);
       // v1.2.6: .gif 是动图, 必须按 <img> 渲染(塞进 <video> 会黑屏)
       return isVideoRender(r)
         ? $el("video", { src: full, controls: true, autoplay: true, muted: true, playsinline: true })
@@ -1498,7 +1542,7 @@ app.registerExtension({
       for (const r of list) {
         if (n >= PREFETCH_N) break;
         if (!r || r.kind !== "image" || !r.dir || !r.media) continue;
-        const u = mediaUrl(r.dir, r.media);
+        const u = runUrl(r);
         if (previewCache[u]) continue;
         previewCache[u] = true;
         n += 1;
@@ -1957,7 +2001,7 @@ app.registerExtension({
           $el("div.chk", {}, [fAuto, bindText($el("span"), "自动归档新产物")]),
           $el("div.chk", {}, [fAutoDl, bindText($el("span"), "自动下载新产物")]),
           $el("div.chk", {}, [fExisting, bindText($el("span"), "归档安装前已有的产物")]),
-          $el("div.chk", {}, [fShowArch, bindText($el("span"), "显示归档库目录")]),
+          $el("div.chk", {}, [fShowArch, bindText($el("span"), "显示归档库目录（不勾选=网格/日历直接读输出目录，不做任何复制）")]),
           row("缩略图宽度(px)", fThumb),
           row("扫描间隔(秒)", fInterval),
         ]),
@@ -2212,8 +2256,24 @@ app.registerExtension({
       }
       throw lastErr || new Error("fetch failed");
     }
-    const RUN_FILE_CANDIDATES = ["workflow.json", "info.json", "prompt.txt"];
-    const THUMB_NAME_RE = /^thumb\.(jpe?g|png|webp|gif|bmp)$/i;
+    // v1.3.8: output 模式的取流 —— 直接取 output 原文件, 不碰归档副本
+    async function fetchOutBytes(relPath, tries) {
+      tries = tries || 3;
+      let lastErr = null;
+      for (let i = 0; i < tries; i++) {
+        try {
+          const res = await fetch("./asset/output_file?p=" + encodeURIComponent(relPath), { cache: "no-store" });
+          if (res.status === 404) return null;
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          return new Uint8Array(await res.arrayBuffer());
+        } catch (e) {
+          lastErr = e;
+          if (i < tries - 1) await new Promise((r) => setTimeout(r, 300 * (i + 1)));
+        }
+      }
+      throw lastErr || new Error("fetch failed");
+    }
+    const RUN_FILE_CANDIDATES = ["workflow.json", "info.json", "prompt.txt"];    const THUMB_NAME_RE = /^thumb\.(jpe?g|png|webp|gif|bmp)$/i;
     // 缩略图永远不下载（无论开关），主图之外的同名缩略图按 r.thumb / thumb.* 识别
     function isThumbName(fn, run) {
       const base = baseName(fn).toLowerCase();
@@ -2240,6 +2300,12 @@ app.registerExtension({
       for (const r of list) {
         const runBase = safeName(r.name);
         const subdir = keepFolders ? runBase : "";
+        // v1.3.8: output 条目只有一个本体文件(没有归档副本里的 info/prompt), 直接取原文件
+        if (isOutRun(r)) {
+          try { push(safeName(r.media), await fetchOutBytes(r.rel), subdir); }
+          catch (e) { failed.push(r.rel + "  （" + (e && e.message ? e.message : e) + "）"); }
+          continue;
+        }
         // 默认只下这一条产物的主图/主视频本体（r.media）。
         // 开启「下载包含 json/txt 元数据」后按 r.files（或已知候选名）抓取，但缩略图始终排除。
         const names = includeMeta
@@ -2438,6 +2504,12 @@ app.registerExtension({
       const res = await fetch("./asset/scan", { method: "POST" });
       const d = await res.json();
       if (d.ok) {
+        // v1.3.8: 不勾选时后端不归档, 扫描退化为"刷新 output 清单"
+        if (d.archive_hidden) {
+          await loadRuns(); refresh();
+          statusMsg(t("已自动更新: 共 ") + runs.length + t(" 条资产"));
+          return;
+        }
         // v1.3.1: 扫描汇总 = 新增 N / 跳过 M 残留 / K 条归档失效
         const parts = [LANG === "zh" ? ("扫描完成, 新增 " + d.new + " 条") : ("Scan done, " + d.new + " new")];
         if (d.skipped) parts.push(LANG === "zh" ? ("跳过 " + d.skipped + " 残留") : ("skipped " + d.skipped));
@@ -2703,13 +2775,42 @@ app.registerExtension({
     function statusMsg(s) { status.textContent = s; }
 
     // ---------- 打开/关闭 ----------
+    // v1.3.8: 数据源二选一 —— 勾选「显示归档库目录」读归档库(/asset/list),
+    // 不勾选读 output 目录(/asset/output_files), 后者只列图片/视频, 与文件夹视图同源。
+    function outFileToRun(f) {
+      const t0 = f.mtime || "";
+      return {
+        src: "out",                       // 标记: 取流走 /asset/output_file
+        dir: "out:" + f.rel,              // 选中/预览列表里的唯一键
+        rel: f.rel,
+        media: f.name,
+        name: f.name,
+        kind: f.kind,
+        size: f.size || 0,
+        created: f.created || t0,
+        mtime: t0,
+        time: t0,
+        date: (t0 || "").slice(0, 10),
+        thumb: "", positive: "", negative: "", models: [], params: {},
+        files: [f.name], has_workflow: false, run_dir: "", opened: "",
+      };
+    }
+    async function loadOutputRuns() {
+      let d = null;
+      try { d = await (await fetch("./asset/output_files?rel=")).json(); } catch (e) { d = null; }
+      runs = (d && d.ok ? (d.files || []) : []).map(outFileToRun)
+        .sort((a, b) => String(b.time || "").localeCompare(String(a.time || "")));
+      rebuildByDate();
+    }
     async function loadRuns() {
-      const res = await fetch("./asset/list");
-      const d = await res.json();
-      if (d.ok) { runs = d.runs || []; rebuildByDate(); }
+      // 先取配置: 网格/日历读哪个源由开关决定, 必须比清单先知道
       try { curConfig = await (await fetch("./asset/config")).json(); } catch (e) {}
       // v1.2.4: 把插件版本显示在标题旁(拿不到就留空, 不影响其它功能)
       try { if (curConfig && curConfig.version) verEl.textContent = "v" + curConfig.version; } catch (e) {}
+      if (!archiveShown()) { await loadOutputRuns(); return; }
+      const res = await fetch("./asset/list");
+      const d = await res.json();
+      if (d.ok) { runs = d.runs || []; rebuildByDate(); }
     }
     async function openPanel() {
       detectLang();
@@ -2729,7 +2830,7 @@ app.registerExtension({
         if (kindBtns[kind]) kindBtns[kind].classList.add("on");
       }
       await loadRuns();
-      if (runs.length) {
+      if (runs.length && /^\d{4}-\d{2}-\d{2}/.test(runs[0].date || "")) {
         const d = runs[0].date;
         calYear = Number(d.slice(0, 4)); calMonth = Number(d.slice(5, 7)) - 1; selDate = d;
       }
@@ -2766,21 +2867,30 @@ app.registerExtension({
     async function pollRefresh() {
       checkLang();
       try {
-        const res = await fetch("./asset/list");
-        const d = await res.json();
-        if (d.ok) {
-          const newDirs = new Set((d.runs || []).map(r => r.dir));
+        // v1.3.8: 轮询也跟着数据源走 —— 不勾选时盯 output 目录, 不碰归档库
+        let items = null;
+        if (archiveShown()) {
+          const res = await fetch("./asset/list");
+          const d = await res.json();
+          if (d.ok) items = d.runs || [];
+        } else {
+          let d = null;
+          try { d = await (await fetch("./asset/output_files?rel=")).json(); } catch (e) { d = null; }
+          if (d && d.ok) items = (d.files || []).map(outFileToRun);
+        }
+        if (items) {
+          const newDirs = new Set(items.map(r => r.dir));
           const oldDirs = new Set(runs.map(r => r.dir));
           const changed = newDirs.size !== oldDirs.size || [...newDirs].some(x => !oldDirs.has(x));
           if (changed) {
             // v1.3.5 ③: 增量更新 —— 只换数据, 不整格重建 DOM(保住滚动/已加载图片/多选高亮)
-            runs = d.runs || [];
+            runs = items;
             rebuildByDate();
             for (const s of [...selected]) if (!newDirs.has(s)) selected.delete(s);
             countEl.textContent = sortRuns(filtered(runs)).length + " / " + runs.length;
             updateBatchBtn();
             statusMsg(t("已自动更新: 共 ") + runs.length + t(" 条资产"));
-            await autoDownloadNew(newDirs, d.runs || []);
+            if (archiveShown()) await autoDownloadNew(newDirs, items);
           }
         }
       } catch (e) {}

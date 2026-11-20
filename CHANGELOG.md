@@ -5,6 +5,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 > 本文件记录 **ComfyUI-AssetManager** 的所有重要改动，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.3.8] - 2026-11-20
+
+### Fixed · 修复
+
+- **Turning the archive switch off now really stops the copies — one generation, one file.** Root cause of "one generation, two extra identical sets": the switch only governed UI visibility (v1.3.7), so archiving kept running, and every re-archived source is retired into `_trash` (v1.3.4) instead of being deleted — a video node that writes a file and then remuxes it produced one live entry plus one trash entry per generation (probe: no rewrite = 1 set, rewritten once = 2 sets, rewritten twice = 3). Both archive triggers are now gated on the switch: the background watcher and `POST /asset/scan`. Off ⇒ nothing is copied, so the output directory keeps exactly one file.<br>
+  **不勾选就真的不复制了 —— 一次生成只留一套。**「一次生成却多出 2 套相同文件」的根因：v1.3.7 的开关只管界面可见性，后台归档照跑；而 v1.3.4 起同源重归档会把旧条目移进回收站（不是删除），所以视频节点"写完再 remux"就会一次生成留下「1 套可见 + 1 套回收站」（实测探针：不重写 = 1 套、重写 1 次 = 2 套、重写 2 次 = 3 套）。现在两个归档入口（后台线程与 `POST /asset/scan`）都听开关：关 ⇒ 一个字节都不复制，输出目录里就那一套。
+- **Grid and calendar work with the switch off.** They used to show an "archive hidden" empty state because `/asset/list` returned nothing while the folder view still listed the output directory — a jarring inconsistency. With the switch off they now list the output directory's images/videos directly (grouped by file date, same media-only filtering), and preview / download / delete all work through the output routes.<br>
+  **开关关着，网格和日历也能用了。** 以前关掉后 `/asset/list` 返回空，网格/日历只剩「归档库已隐藏」空态，而文件夹视图照样能看到文件 —— 观感割裂。现在关着时网格/日历直接列输出目录里的图片/视频（按文件日期分日、同样只列媒体），预览/下载/删除全部走输出目录接口。
+- **The scan button no longer lies.** `status_summary` was called as `(output_dir, archive_dir, …)` while its signature is `(archive_dir, output_dir, …)`, so a manual scan actually scanned the archive directory and always reported "0 new"; archiving only ever happened through the background thread, which hid the bug.<br>
+  **「扫描」按钮不再说谎。** 调用 `status_summary` 时实参顺序写反了（签名是 `(archive_dir, output_dir, …)`，实参传的是输出在前），手动扫描其实在扫归档库，所以永远报「新增 0」；归档只靠后台线程，缺陷一直被掩盖。
+
 ## [1.3.7] - 2026-11-20
 
 ### Added · 新增

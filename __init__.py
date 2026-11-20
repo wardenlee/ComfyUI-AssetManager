@@ -20,7 +20,7 @@ WEB_DIRECTORY = "web"
 NODE_CLASS_MAPPINGS = {}
 NODE_DISPLAY_NAME_MAPPINGS = {}
 
-__version__ = "1.3.7"
+__version__ = "1.3.8"
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _cfg = assets_core.load_config(BASE_DIR)
@@ -63,16 +63,25 @@ def _current_output_dir():
     return (_cfg.get("output_dir") or "").strip()
 
 
+# --- v1.3.8: 「显示归档库目录」开关: 关=不归档+网格/日历读 output; 开=归档库视图与全部操作 ---
+# 必须定义在 _watch_loop 之前: 后台线程在模块级就 start(), 第一轮比后面的定义更早执行。
+def _archive_visible():
+    """开关开=归档库在面板内可见可操作且后台照常归档; 关(含旧 config.json 缺该键)=不归档、归档路由全拒绝"""
+    return bool(_cfg.get("show_archive", False))
+
+
 def _watch_loop():
     while not _stop.is_set():
-        if _cfg.get("auto_archive", True):
-            try:
+        # v1.3.8: 开关关 = 不复制任何文件(磁盘上只有 output 里的那一套)。
+        # 判定在循环内做, 所以面板里开关一改, 下一轮就生效(无需重启)。
+        try:
+            if _cfg.get("auto_archive", True) and _archive_visible():
                 out = _current_output_dir()
                 if out:
                     with _LOCK:
                         assets_core.scan_all(out, _arch, _state, _cfg)
-            except Exception:
-                pass
+        except Exception:
+            pass
         _stop.wait(float(_cfg.get("interval_sec", 10)))
 
 
@@ -129,16 +138,11 @@ def _skip_source_prefixes():
     return res
 
 
-# --- v1.3.7: 「显示归档库目录」开关: 只控 UI 可见与操作, 不影响后台采集 --------
-def _archive_visible():
-    """开关开=归档库在面板内可见且可操作; 关(含 config 缺失该键的旧配置)=不可见不可操作"""
-    return bool(_cfg.get("show_archive", False))
-
-
+# --- v1.3.8: 「显示归档库目录」开关: 定义在文件上部(见 _watch_loop 之前), 这里只做路由守卫 ---
 @PromptServer.instance.routes.get("/asset/list")
 async def asset_list(request):
     if not _archive_visible():
-        # 与正常响应同构的空清单, 前端据此渲染空态提示(不算错误)
+        # 与正常响应同构的空清单; v1.3.8 起前端不再用它渲染空态, 而是改读 output 目录
         return web.json_response({"ok": True, "count": 0, "runs": [],
                                  "archive_hidden": True})
     def _go():
@@ -558,9 +562,16 @@ async def asset_delete_batch(request):
 
 @PromptServer.instance.routes.post("/asset/scan")
 async def asset_scan(request):
+    """v1.3.8: 开关关时只回报"未归档", 绝不触发 scan_all —— 否则"不勾选就不复制文件"就破了。"""
+    if not _archive_visible():
+        return web.json_response({"ok": True, "new": 0, "skipped": 0, "broken": 0,
+                                  "archive_hidden": True})
     def _go():
         with _LOCK:
-            return assets_core.status_summary(_current_output_dir(), _arch, _state, _cfg,
+            # v1.3.8 修正: 这里原先写成 (output_dir, archive_dir, ...), 与签名
+            # status_summary(archive_dir, output_dir, ...) 顺序相反 —— 手动「扫描」一直在扫归档库,
+            # 所以永远报「新增 0」; 归档只靠后台线程, 缺陷被掩盖。改为按签名传参。
+            return assets_core.status_summary(_arch, _current_output_dir(), _state, _cfg,
                                               _skip_source_prefixes())
 
     n = await asyncio.to_thread(_go)
