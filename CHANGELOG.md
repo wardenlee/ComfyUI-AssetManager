@@ -5,6 +5,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 > 本文件记录 **ComfyUI-AssetManager** 的所有重要改动，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.3.10] - 2026-11-21
+
+### Added · 新增
+
+- **Audio is now a first-class asset type.** Files from minimax / yue / stable-audio-3 and friends (`.flac .mp3 .wav .ogg .opus .m4a .aac .aiff .aif`) used to fall into `kind == "other"`, which meant never archived and filtered out of every view — you could generate audio and see nothing at all. `AUDIO_EXT` now joins `ALL_EXT`, so archiving, the residual counter, the folder view and the folder-download manifest all pick audio up; `kind` gains a third value `"audio"`; the grid/calendar get a 「音频」 filter button and a 「音」 count tag, and cards preview, download and delete like any other asset.<br>
+  **音频升为第一类资产。** minimax / yue / stable-audio-3 这类节点产出的 `.flac .mp3 .wav .ogg .opus .m4a .aac .aiff .aif` 原先一律归到 `kind == "other"` —— 既不归档，又被所有视图过滤掉，等于"生成了却什么都看不到"。现在 `AUDIO_EXT` 并入 `ALL_EXT`，归档、残留统计、文件夹视图、下载文件夹清单全部带上音频；`kind` 增加第三个值 `"audio"`；网格/日历多出「音频」筛选按钮与「音」计数标签，卡片照常预览、下载、删除。
+- **Audio covers are waveforms, not identical icons.** Audio has no frame to extract, so the cover is rendered by `ffmpeg showwavespic` into `thumb.jpg` (archive time) or into the poster cache (`/asset/thumb`, on demand). With no ffmpeg the cover is left empty and the card falls back to a ♪ tile — no broken images, and you can still tell clips apart at a glance.<br>
+  **音频封面是波形图，不是统一的图标。** 音频没有画面帧可抽，封面改由 `ffmpeg showwavespic` 画成波形图：归档时落 `thumb.jpg`，不勾选备份时由 `/asset/thumb` 按需生成并进封面缓存。没有 ffmpeg 就留空、卡片退回 ♪ 图标块 —— 不会出现破图，一眼也还能分辨。
+
+### Changed · 变更
+
+- **Preview autoplays and loops; no second click needed.** Opening an audio or video item starts playing and keeps looping until you hit the native pause button or leave the preview. Video tries unmuted first and falls back to muted autoplay if the browser's autoplay policy refuses (so the picture still moves); audio is left to the user in that case, since a silently playing waveform is meaningless. Switching pages or closing now explicitly pauses and detaches the previous media — a detached media element keeps playing in Chrome, which with looping would stack sound.<br>
+  **预览点开即自动循环播放，不用再点一下。** 打开音频/视频条目就开始播并一直循环，直到按原生暂停键或退出预览。视频先尝试有声播放，被浏览器的自动播放策略拒绝时退回静音自动播放（画面照样在动）；音频此时留给用户自己点（静音播波形没有意义）。切换上一张/下一张或关闭预览现在会显式暂停并卸载上一段媒体 —— 媒体元素脱离 DOM 后 Chrome 仍会继续播，加了循环就会叠音。
+- **Unplayable audio containers stay visible, unlike `.mkv`.** A `.aiff` can still be drawn as a waveform and downloaded, so hiding it (the `.mkv` treatment) would only be more confusing; the preview shows "浏览器无法播放该音频，可用「下载文件」保存后用本地播放器打开" instead.<br>
+  **放不出来的音频容器仍然可见（与 `.mkv` 刻意不同）。** `.aiff` 照样能画波形、能下载，按 `.mkv` 的做法藏起来只会更困惑；预览里改为提示「浏览器无法播放该音频」。
+
+### Known limitation · 已知限制
+
+- Audio nodes generally do not embed prompt metadata the way PNG does, so a backed-up audio entry usually has empty `positive` / `negative` and the card shows "(未检测到提示词)". Filename, time, size and the waveform are still there; recovering the prompt from the ComfyUI execution context is a separate follow-up, deliberately not bundled here.<br>
+  音频节点一般不像 PNG 那样内嵌提示词元数据，所以备份条目的 `positive` / `negative` 通常是空的，卡片会显示「(未检测到提示词)」。文件名、时间、大小、波形仍然齐全；"从 ComfyUI 执行上下文取提示词"作为后续单独一项，这次刻意不塞进来。
+
 ## [1.3.9] - 2026-11-20
 
 ### Changed · 变更

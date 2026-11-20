@@ -26,7 +26,10 @@ except Exception:
 
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 VIDEO_EXT = {".mp4", ".webm", ".mov", ".mkv", ".gif"}
-ALL_EXT = IMAGE_EXT | VIDEO_EXT
+# v1.3.10: 音频 —— ComfyUI 自带 SaveAudio 存 .flac / SaveAudioMP3 存 .mp3 / SaveAudioOpus 存 .opus,
+# YuE 与多数第三方音频节点(minimax、stable-audio 等封装)存 .wav 或 .mp3; 其余按常见容器补齐。
+AUDIO_EXT = {".flac", ".mp3", ".wav", ".ogg", ".opus", ".m4a", ".aac", ".aiff", ".aif"}
+ALL_EXT = IMAGE_EXT | VIDEO_EXT | AUDIO_EXT
 NEG_HINTS = ("negative", "neg prompt", "neg", "负")
 
 # ---------------------------------------------------------------------------
@@ -42,6 +45,9 @@ STATE_ARTIFACT_NAMES = {"archive_state.json", "open_state.json"}
 
 # v1.2.6: 浏览器普遍放不出来的视频容器 —— 不出现在任何列表/下载里(数据仍会归档, 只是不可见)
 BROWSER_UNPLAYABLE_VIDEO_EXT = {".mkv"}
+# v1.3.10: 浏览器放不出来的音频容器 —— 与视频不同, **不隐藏**: 文件确实在盘上,
+# ffmpeg 还能画波形当封面, 藏起来只会更困惑; 预览里给"请下载后用本地播放器"的提示。
+BROWSER_UNPLAYABLE_AUDIO_EXT = {".aiff", ".aif"}
 
 DEFAULT_CONFIG = {
     "output_dir": "",   # 空 = 使用 ComfyUI 默认 output
@@ -359,6 +365,41 @@ def make_video_thumb(src, dst, cfg):
     return None
 
 
+def make_audio_thumb(src, dst, cfg):
+    """v1.3.10: 音频封面 = 波形图(ffmpeg showwavespic), 落成 thumb.jpg。
+
+    音频没有画面帧, 抽帧那套用不了; 波形图能一眼看出"有声/静音/长短", 比统一图标好认。
+    没有 ffmpeg 时返回 None —— 前端会退回 ♪ 图标, 不会出现破图。
+    """
+    ff = find_ffmpeg(cfg)
+    if not ff:
+        return None
+    try:
+        width = max(160, min(1280, int((cfg or {}).get("thumb_width", 480))))
+    except Exception:
+        width = 480
+    height = int(round(width * 9.0 / 16.0))
+    graph = ("[0:a]showwavespic=s=%dx%d:colors=0x7aa2f7|0xbb9af7[wave]"
+             % (width, height))
+    try:
+        r = subprocess.run(
+            [ff, "-y", "-hide_banner", "-loglevel", "error",
+             "-i", str(src), "-filter_complex", graph,
+             "-map", "[wave]", "-frames:v", "1", "-q:v", "4", str(dst)],
+            capture_output=True, timeout=60,
+        )
+        if r.returncode == 0 and dst.exists() and dst.stat().st_size > 0:
+            return "thumb.jpg"
+    except Exception:
+        pass
+    try:
+        if dst.exists():
+            dst.unlink()
+    except Exception:
+        pass
+    return None
+
+
 # ---------------------------------------------------------------------------
 # v1.3.6: 视频封面(海报帧) —— 按需生成 + 磁盘缓存, 不依赖归档
 # ---------------------------------------------------------------------------
@@ -429,18 +470,66 @@ def ensure_video_poster(media_path, cache_dir, cfg):
     return None
 
 
+def ensure_media_poster(media_path, cache_dir, cfg):
+    """v1.3.10: 封面分派 —— 视频抽帧, 音频画波形; 两者共用同一套磁盘缓存命名。
+
+    返回值语义与 ensure_video_poster 一致: 成功给 jpg 路径, 失败 None(前端自会兜底)。
+    """
+    p = Path(media_path)
+    if p.suffix.lower() not in AUDIO_EXT:
+        return ensure_video_poster(p, cache_dir, cfg)
+    dst = poster_cache_file(p, cache_dir)
+    if dst is None:
+        return None
+    try:
+        if dst.is_file() and dst.stat().st_size > 0:
+            return dst
+    except OSError:
+        pass
+    with _POSTER_SEM:
+        try:
+            if dst.is_file() and dst.stat().st_size > 0:
+                return dst
+        except OSError:
+            pass
+        try:
+            dst.parent.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            return None
+        tmp = dst.with_name("%s.%d.part.jpg" % (dst.stem, threading.get_ident()))
+        if make_audio_thumb(p, tmp, cfg):
+            try:
+                os.replace(str(tmp), str(dst))
+                return dst
+            except OSError:
+                pass
+        try:
+            if tmp.exists():
+                tmp.unlink()
+        except Exception:
+            pass
+    return None
+
+
 def archive_file(rel, src, archive_dir, state, cfg, reuse_dir=None):
     st = os.stat(src)
     state_key = {"size": st.st_size, "mtime_ns": st.st_mtime_ns}
     if state.get(rel) == state_key:
         return None
     ext = Path(rel).suffix.lower()
-    kind = "video" if ext in VIDEO_EXT else "image"
+    # v1.3.10: 三种类型 —— 音频走 ffprobe 取标签(音频节点基本不写元数据, 多半为空, 不报错)
+    if ext in AUDIO_EXT:
+        kind = "audio"
+    elif ext in VIDEO_EXT:
+        kind = "video"
+    else:
+        kind = "image"
     arch = Path(archive_dir)
 
     if kind == "image":
         prompt_raw, workflow_raw = extract_image_metadata(src)
     else:
+        # 视频与音频同走 ffprobe format_tags(v1.3.10): 音频节点几乎不写标签, 取不到就留空, 不算失败
         prompt_raw, workflow_raw = extract_video_metadata(src, cfg)
     prompt_graph = safe_json(prompt_raw)
     workflow_graph = safe_json(workflow_raw)
@@ -497,6 +586,8 @@ def archive_file(rel, src, archive_dir, state, cfg, reuse_dir=None):
             pass
     elif kind == "video":
         thumb = make_video_thumb(src, run_dir / "thumb.jpg", cfg)
+    else:  # v1.3.10: 音频封面 = 波形图, 无 ffmpeg 时留空(前端用 ♪ 图标)
+        thumb = make_audio_thumb(src, run_dir / "thumb.jpg", cfg)
 
     info = {
         "run_id": run_dir.name,
@@ -524,9 +615,10 @@ def archive_file(rel, src, archive_dir, state, cfg, reuse_dir=None):
     (run_dir / "info.json").write_text(
         json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
 
+    kind_zh = {"video": "视频", "audio": "音频"}.get(kind, "图片")
     lines = ["=== ComfyUI 产物信息 ===",
              f"来源: {rel}", f"生成时间: {info['generated_at']}",
-             f"类型: {'视频' if kind == 'video' else '图片'}",
+             f"类型: {kind_zh}",
              f"大小: {st.st_size / 1024:.0f} KB"]
     if parsed["models"]:
         lines.append("模型/LoRA: " + ", ".join(parsed["models"]))
@@ -1986,7 +2078,15 @@ def list_output(output_dir, rel="", archive_dir=None, open_state=None, exclude_d
         if is_junk_media(name, size):
             continue
         ext = Path(name).suffix.lower()
-        kind = "image" if ext in IMAGE_EXT else ("video" if ext in VIDEO_EXT else "other")
+        # v1.3.10: 图片 / 视频 / 音频 三类都算媒体
+        if ext in IMAGE_EXT:
+            kind = "image"
+        elif ext in VIDEO_EXT:
+            kind = "video"
+        elif ext in AUDIO_EXT:
+            kind = "audio"
+        else:
+            kind = "other"
         # v1.3.5: 视图只显示图片/视频 —— 非媒体文件(.json/.txt/.py 等)不再占位
         # (文件本体原样留盘, 只是不出现在任何列表里; 见契约 §15)
         if kind == "other":
@@ -2115,6 +2215,8 @@ def _kind_of(name):
         return "image"
     if ext in VIDEO_EXT:
         return "video"
+    if ext in AUDIO_EXT:   # v1.3.10
+        return "audio"
     return "other"
 
 

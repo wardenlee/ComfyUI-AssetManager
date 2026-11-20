@@ -56,6 +56,7 @@ const STYLE = `
 .asm-day .tag { font-size:9px; padding:1px 6px; border-radius:10px; line-height:1.5; font-weight:600; }
 .asm-day .tag-img { background:rgba(91,140,255,.20); color:#8fb0ff; }
 .asm-day .tag-vid { background:rgba(255,150,60,.18); color:#ffa05e; }
+.asm-day .tag-aud { background:rgba(150,110,255,.20); color:#b79bff; }
 .asm-callist h3 { font-size:15px; font-weight:600; margin:0 0 14px; padding-bottom:10px; border-bottom:1px solid var(--border-color,#3a3a3a); }
 .asm-callist h3 .sub { font-size:12px; color:var(--descrip-text,#aaa); font-weight:400; margin-left:4px; }
 .asm-callist .cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(168px,1fr)); gap:12px; }
@@ -147,6 +148,7 @@ app.registerExtension({
       "全部": "All types",
       "图片": "Images",
       "视频": "Videos",
+      "音频": "Audio",
       "☑ 多选": "☑ Multi-select",
       "🗑 删除选中": "🗑 Delete selected",
       "⬇ 下载选中": "⬇ Download selected",
@@ -154,6 +156,7 @@ app.registerExtension({
       "⬇ 下载": "⬇ Download",
       "⟳ 扫描": "⟳ Scan",
       "图": "Img",
+      "音": "Aud",
       "(未检测到提示词)": "(no prompt detected)",
       "没有匹配的产物": "No matching assets",
       "当天没有产物": "No assets on that day",
@@ -268,6 +271,7 @@ app.registerExtension({
       "该文件无法预览": "This file cannot be previewed",
       "下载文件": "Download file",
       "浏览器无法播放该视频": "The browser cannot play this video",
+      "浏览器无法播放该音频": "The browser cannot play this audio",
       "可用「下载文件」保存后用本地播放器打开": "Use Download file to save it, then open it with a local player",
       "该产物未携带媒体文件": "This asset has no media file",
       "该文件不支持预览，可用「下载文件」保存": "Preview is not supported for this file — use Download file to save it",
@@ -483,6 +487,8 @@ app.registerExtension({
     // v1.2.6: .gif 是动图, 必须按 <img> 渲染 —— 塞进 <video> 浏览器直接放不出来(黑屏), 即"无法预览的视频"
     function isGifName(n) { return /\.gif$/i.test(String(n || "")); }
     function isVideoRender(r) { return r.kind === "video" && !isGifName(r.media); }
+    // v1.3.10: 音频是第三种媒体类型 —— 卡片封面用波形图, 预览用 <audio>, 不做悬停试听(会突然出声)
+    function isAudioRender(r) { return !!r && r.kind === "audio"; }
 
     // ---------- v1.3.9: 「显示备份目录」只控归档库的可见与操作 ----------
     // 语义: 关 = 归档库(备份目录)不可见、不可操作, 但后台自动归档照常跑; 网格/日历列 output 里的图片/视频;
@@ -591,6 +597,8 @@ app.registerExtension({
     // v1.2.6: 文件夹视图里以文件名判定(卡片/预览用), gif 同样按图片渲染
     function isGifRel(n) { return isGifName(n); }
     function isVideoRenderF(f) { return f.kind === "video" && !isGifName(f.name); }
+    // v1.3.10: 文件夹视图里以 kind 判定音频(后端 list_output 已标注)
+    function isAudioRenderF(f) { return !!f && f.kind === "audio"; }
     function fmtSize(n) {
       n = Number(n) || 0;
       if (n < 1024) return n + " B";
@@ -796,6 +804,7 @@ app.registerExtension({
       mkKindBtn("全部", "all"),
       mkKindBtn("图片", "image"),
       mkKindBtn("视频", "video"),
+      mkKindBtn("音频", "audio"),
       bindText($el("span.asm-lbl"), "排序"),
       sortSel,
       multiBtn,
@@ -833,19 +842,47 @@ app.registerExtension({
     document.body.appendChild(overlay);
 
     // ---------- 渲染 ----------
+    // v1.3.10: 音频卡片封面 —— 波形图(后端 ffmpeg 生成); 没有 ffmpeg / 生成失败时退成 ♪ 图标块,
+    // 不留破图, 也不让一排音频长得一模一样到无法区分(文件名仍在卡片下方)。
+    // 8 秒轮询会重建网格 → 404 过的封面记下来, 不再反复打后端。
+    const audioCoverDead = {};
+    function audioCover(src, glyph) {
+      const wrap = $el("div.asm-audc");
+      wrap.style.cssText = "position:relative;width:100%;height:100%;display:flex;" +
+        "align-items:center;justify-content:center;background:#0b0b0b";
+      const ph = $el("div", { textContent: glyph || "♪" });
+      ph.style.cssText = "font-size:34px;color:#7aa2f7;line-height:1";
+      wrap.appendChild(ph);
+      if (!audioCoverDead[src]) {
+        const im = $el("img", { loading: "lazy" });
+        im.style.cssText = "position:absolute;inset:0;width:100%;height:100%;object-fit:cover";
+        im.onerror = () => {
+          audioCoverDead[src] = true;
+          try { im.remove(); } catch (e) {}
+        };
+        im.src = src;
+        wrap.appendChild(im);
+      }
+      return wrap;
+    }
+
     function renderCard(r, container, list) {
       const card = $el("div.asm-card");
       if (selected.has(r.dir)) card.classList.add("selected");
       const full = runUrl(r);
       const isVid = isVideoRender(r);
+      const isAud = isAudioRender(r);
       // v1.3.6: 视频一律用"封面帧"当卡片图(poster); v1.3.8 起 output 条目走 src=out 的封面接口
-      const thumbEl = isVid
-        ? imgWithPoster(runPoster(r), full)
-        : $el("img", { src: full, loading: "lazy" });
+      // v1.3.10: 音频用波形图当卡片图
+      const thumbEl = isAud
+        ? audioCover(runPoster(r), "♪")
+        : (isVid
+          ? imgWithPoster(runPoster(r), full)
+          : $el("img", { src: full, loading: "lazy" }));
       card.appendChild($el("div.m", {}, [
         thumbEl,
         isVid ? $el("div.play", { textContent: "▶" }) : null,
-        $el("span.badge", { textContent: isVid ? t("视频") : t("图") }),
+        $el("span.badge", { textContent: isVid ? t("视频") : (isAud ? t("音频") : t("图")) }),
         selected.has(r.dir) ? $el("div.selmark", { textContent: "✓" }) : null,
       ].filter(Boolean)));
       card.appendChild($el("div.meta", {}, [
@@ -902,7 +939,12 @@ app.registerExtension({
 
     function countOf(d) {
       const l = byDate[d] || [];
-      return { all: l.length, img: l.filter(r => r.kind === "image").length, vid: l.filter(r => r.kind === "video").length };
+      return {
+        all: l.length,
+        img: l.filter(r => r.kind === "image").length,
+        vid: l.filter(r => r.kind === "video").length,
+        aud: l.filter(r => r.kind === "audio").length,   // v1.3.10
+      };
     }
 
     function renderCal() {
@@ -926,10 +968,12 @@ app.registerExtension({
           if (kind === "all") {
             if (c.img) cnt.appendChild($el("span.tag.tag-img", { textContent: c.img + (LANG === "zh" ? " 图" : " img") }));
             if (c.vid) cnt.appendChild($el("span.tag.tag-vid", { textContent: c.vid + (LANG === "zh" ? " 视" : " vid") }));
+            if (c.aud) cnt.appendChild($el("span.tag.tag-aud", { textContent: c.aud + (LANG === "zh" ? " 音" : " aud") }));
           } else {
-            const n = kind === "image" ? c.img : c.vid;
-            const cls = kind === "image" ? "tag-img" : "tag-vid";
-            const label = LANG === "zh" ? (kind === "image" ? " 图" : " 视") : (kind === "image" ? " img" : " vid");
+            const n = kind === "image" ? c.img : (kind === "audio" ? c.aud : c.vid);
+            const cls = kind === "image" ? "tag-img" : (kind === "audio" ? "tag-aud" : "tag-vid");
+            const label = LANG === "zh" ? (kind === "image" ? " 图" : (kind === "audio" ? " 音" : " 视"))
+              : (kind === "image" ? " img" : (kind === "audio" ? " aud" : " vid"));
             cnt.appendChild($el("span.tag." + cls, { textContent: n + label }));
           }
           day.appendChild(cnt);
@@ -1086,18 +1130,22 @@ app.registerExtension({
     function renderFileCard(f) {
       const on = selected.has(f.rel);
       const isVid = isVideoRenderF(f);
+      const isAud = isAudioRenderF(f);
       const card = $el("div.asm-card.asm-fcard" + (on ? ".selected" : ""));
       const full = outUrl(f.rel);
       let thumbEl;
       if (f.kind === "other") thumbEl = $el("div.pico", { textContent: "📄" });
-      else if (isVid) {
+      else if (isAud) {
+        // v1.3.10: 音频没有画面 —— 用后端按需生成的波形图当封面, 无 ffmpeg 时退 ♪ 图标
+        thumbEl = audioCover(posterUrlOut(f.rel), "♪");
+      } else if (isVid) {
         // v1.3.6: 视频卡片显示真实首帧(归档 thumb 优先, 否则按需生成), 不再是黑块
         thumbEl = imgWithPoster((f.run_dir && f.thumb) ? mediaUrl(f.run_dir, f.thumb) : posterUrlOut(f.rel), full);
       } else thumbEl = $el("img", { src: full, loading: "lazy" });
       card.appendChild($el("div.m", {}, [
         thumbEl,
         isVid ? $el("div.play", { textContent: "▶" }) : null,
-        $el("span.badge", { textContent: isVid ? t("视频") : (f.kind === "image" ? t("图") : t("其他")) }),
+        $el("span.badge", { textContent: isVid ? t("视频") : (isAud ? t("音频") : (f.kind === "image" ? t("图") : t("其他"))) }),
         // v1.3.1: 归档状态角标 —— 未备份黄 / 已备份不显示(常态不噪)
         f.arch_state === "missing-info" ? $el("span.badge.warn", { textContent: t("未备份") }) : null,
         on ? $el("div.selmark", { textContent: "✓" }) : null,
@@ -1478,19 +1526,71 @@ app.registerExtension({
     let rangeWarmer = null;   // v1.3.5 ②: 视频首段 Range 预热的 AbortController
     let previewCache = {};    // v1.3.5 ④: 已预取的原图 url -> true
 
+    // ---------- v1.3.10: 预览播放策略 ----------
+    // 用户要求(2026-11-21): 音频/视频点开即自动**循环**播放, 不必再点播放键;
+    // 要停下来就点原生控件的暂停键, 或直接退出预览。切换上一张/下一张、关闭预览都必须先停掉上一段,
+    // 因为媒体元素被移出 DOM 后浏览器**不会**自动暂停(旧实现只清 innerHTML, 循环播放会叠音)。
+    function hardStopMedia(root) {
+      if (!root || !root.querySelectorAll) return;
+      const els = root.querySelectorAll("video,audio");
+      for (let i = 0; i < els.length; i++) {
+        const el = els[i];
+        try { el.pause(); } catch (e) {}
+        try { el.removeAttribute("src"); el.load(); } catch (e) {}
+      }
+    }
+
+    // 浏览器自动播放策略: 有声自动播可能被拒 —— 视频退回静音自动播(至少画面在动),
+    // 音频静音播没有意义, 就留给用户在控件上点一下。
+    function autoPlayLoop(el, isAudio) {
+      el.loop = true;
+      el.autoplay = true;
+      el.setAttribute("playsinline", "");
+      const go = () => {
+        let pr = null;
+        try { pr = el.play(); } catch (e) { return; }
+        if (pr && typeof pr.catch === "function") {
+          pr.catch(() => {
+            if (isAudio) return;
+            el.muted = true;
+            try { el.play().catch(() => {}); } catch (e) {}
+          });
+        }
+      };
+      el.addEventListener("loadeddata", go, { once: true });
+      go();
+      return el;
+    }
+
+    // 音频预览: 上面波形图, 下面播放条(原生控件, 暂停键就是"再次点击停止")
+    function audioPreviewBox(shotSrc, el) {
+      const box = $el("div.asm-audpv");
+      box.style.cssText = "width:100%;height:100%;display:flex;flex-direction:column;" +
+        "align-items:center;justify-content:center;gap:16px;background:#0b0b0b;padding:18px;box-sizing:border-box";
+      const shot = $el("img");
+      shot.style.cssText = "max-width:100%;max-height:70%;object-fit:contain;border-radius:8px";
+      shot.onerror = () => { try { shot.remove(); } catch (e) {} };
+      if (shotSrc) { shot.src = shotSrc; box.appendChild(shot); }
+      el.style.cssText = "width:min(560px, 92%);";
+      box.appendChild(el);
+      return box;
+    }
+
     function previewMedia(r) {
       const full = runUrl(r);
       // v1.2.6: .gif 是动图, 必须按 <img> 渲染(塞进 <video> 会黑屏)
+      // v1.3.10: 音频走 <audio>, 点开即循环播放
+      if (isAudioRender(r)) return autoPlayLoop($el("audio", { src: full, controls: true }), true);
       return isVideoRender(r)
-        ? $el("video", { src: full, controls: true, autoplay: true, muted: true, playsinline: true })
+        ? autoPlayLoop($el("video", { src: full, controls: true }), false)
         : $el("img", { src: full });
     }
 
-    // v1.2.6: 视频在浏览器里放不出来(编码/容器不支持)时的明确提示面板
-    function unplayableBox(name) {
+    // v1.2.6: 视频/音频在浏览器里放不出来(编码/容器不支持)时的明确提示面板 (v1.3.10 加音频)
+    function unplayableBox(name, isAudio) {
       return $el("div", { style: { textAlign: "center", color: "var(--descrip-text,#aaa)", padding: "30px 20px" } }, [
         $el("div", { textContent: "⚠", style: { fontSize: "34px", marginBottom: "10px" } }),
-        $el("div", { textContent: t("浏览器无法播放该视频"), style: { fontSize: "14px", color: "var(--fg-color,#eee)", marginBottom: "6px" } }),
+        $el("div", { textContent: isAudio ? t("浏览器无法播放该音频") : t("浏览器无法播放该视频"), style: { fontSize: "14px", color: "var(--fg-color,#eee)", marginBottom: "6px" } }),
         $el("div", { textContent: name || "", style: { fontSize: "12px", wordBreak: "break-all", marginBottom: "4px" } }),
         $el("div", { textContent: t("可用「下载文件」保存后用本地播放器打开"), style: { fontSize: "12px" } }),
       ]);
@@ -1553,7 +1653,8 @@ app.registerExtension({
 
     function closePreview() {
       if (rangeWarmer) { try { rangeWarmer.abort(); } catch (e) {} rangeWarmer = null; }
-      if (pv && pv.m) pv.m.remove();
+      // v1.3.10: 退出即停 —— 媒体元素脱离 DOM 后浏览器仍会继续播, 必须显式 pause + 卸掉 src
+      if (pv && pv.m) { hardStopMedia(pv.m); pv.m.remove(); }
       pv = null;
     }
 
@@ -1590,25 +1691,39 @@ app.registerExtension({
           const x = list[(k + list.length) % list.length];
           if (x && x.kind === "image") { try { const im = new Image(); im.src = mediaUrl(x.dir, x.media); } catch (e) {} }
           // v1.3.5 ②: 相邻视频预热首字节(只取前 64KB, 拖动进度仍由浏览器按需请求)
-          if (x && x.kind === "video" && x.media) { try { warmVideoFirstBytes(mediaUrl(x.dir, x.media)); } catch (e) {} }
+          // v1.3.10: 音频同样预热, 点开后起播更快
+          if (x && (x.kind === "video" || x.kind === "audio") && x.media) { try { warmVideoFirstBytes(mediaUrl(x.dir, x.media)); } catch (e) {} }
         }
       }
       function show(i) {
         idx = ((i % list.length) + list.length) % list.length;
         const cur = list[idx];
+        hardStopMedia(mediaBox);   // v1.3.10: 翻页前先停掉上一段, 否则循环播放会叠音
         mediaBox.innerHTML = "";
         const media = previewMedia(cur);
+        const isAud = isAudioRender(cur);
         // v1.3.5 ①: 先放缩略图占位, 原图/视频就绪后无缝替换(零白屏)
         // v1.3.6: 视频没有归档缩略图时用按需封面帧占位, 不再白屏/黑屏
+        // v1.3.10: 音频同理 —— 波形图当占位/背景图
         const thumbSrc = cur.thumb ? mediaUrl(cur.dir, cur.thumb)
-          : (isVideoRender(cur) ? posterUrlArch(cur.dir, cur.media) : "");
-        mediaBox.appendChild(placeholderBox(thumbSrc, media, media.tagName === "VIDEO"));
+          : ((isVideoRender(cur) || isAud) ? posterUrlArch(cur.dir, cur.media) : "");
+        if (isAud) mediaBox.appendChild(audioPreviewBox(thumbSrc, media));
+        else mediaBox.appendChild(placeholderBox(thumbSrc, media, media.tagName === "VIDEO"));
         // v1.2.6: 视频放不出来(编码/容器不支持)时给明确提示, 不再黑屏
         if (media.tagName === "VIDEO") {
           media.addEventListener("error", () => {
+            hardStopMedia(mediaBox);
             mediaBox.innerHTML = "";
             mediaBox.appendChild(unplayableBox(cur.name));
           });
+        }
+        // v1.3.10: 音频放不出来(.aiff 等浏览器不认的容器)时同样给提示, 而不是留一条点不动的播放条
+        if (media.tagName === "AUDIO") {
+          media.addEventListener("error", () => {
+            hardStopMedia(mediaBox);
+            mediaBox.innerHTML = "";
+            mediaBox.appendChild(unplayableBox(cur.name, true));
+          }, { once: true });
         }
         ta.value = (cur.positive || "") + (cur.negative ? "\n\nNegative prompt: " + cur.negative : "");
         rowsEl.innerHTML = "";
@@ -1685,8 +1800,10 @@ app.registerExtension({
 
       function mediaFor(x) {
         // v1.2.6: .gif 按图片渲染(塞进 <video> 会黑屏); 视频用 <video>
+        // v1.3.10: 音频用 <audio>; 音频/视频都点开即循环播放
         if (isGifRel(x.name)) return $el("img", { src: outUrl(x.rel) });
-        if (isVideoRenderF(x)) return $el("video", { src: outUrl(x.rel), controls: true, autoplay: true, muted: true, playsinline: true });
+        if (isAudioRenderF(x)) return autoPlayLoop($el("audio", { src: outUrl(x.rel), controls: true }), true);
+        if (isVideoRenderF(x)) return autoPlayLoop($el("video", { src: outUrl(x.rel), controls: true }), false);
         if (x.kind === "image") return $el("img", { src: outUrl(x.rel) });
         return $el("div", { textContent: t("该文件无法预览") });
       }
@@ -1694,26 +1811,38 @@ app.registerExtension({
         for (const k of [i - 1, i + 1]) {
           const x = list[(k + list.length) % list.length];
           if (x && x.kind === "image") { try { const im = new Image(); im.src = outUrl(x.rel); } catch (e) {} }
-          // v1.3.5 ②: 相邻视频预热首字节
-          if (x && x.kind === "video" && x.rel) { try { warmVideoFirstBytes(outUrl(x.rel)); } catch (e) {} }
+          // v1.3.5 ②: 相邻视频预热首字节; v1.3.10 音频同样
+          if (x && (x.kind === "video" || x.kind === "audio") && x.rel) { try { warmVideoFirstBytes(outUrl(x.rel)); } catch (e) {} }
         }
       }
       function show(i) {
         idx = ((i % list.length) + list.length) % list.length;
         const cur = list[idx];
+        hardStopMedia(mediaBox);   // v1.3.10: 翻页前先停掉上一段
         mediaBox.innerHTML = "";
         const media = mediaFor(cur);
+        const isAud = isAudioRenderF(cur);
         // v1.3.5 ①: 文件夹视图优先用归档缩略图占位, 无则留空等原图(零白屏)
         // v1.3.6: 视频没有归档缩略图时用按需封面帧占位
+        // v1.3.10: 音频用波形图占位
         const thumbSrc = (cur.run_dir && cur.thumb) ? mediaUrl(cur.run_dir, cur.thumb)
-          : (isVideoRenderF(cur) ? posterUrlOut(cur.rel) : "");
-        mediaBox.appendChild(placeholderBox(thumbSrc, media, media.tagName === "VIDEO"));
+          : ((isVideoRenderF(cur) || isAud) ? posterUrlOut(cur.rel) : "");
+        if (isAud) mediaBox.appendChild(audioPreviewBox(thumbSrc, media));
+        else mediaBox.appendChild(placeholderBox(thumbSrc, media, media.tagName === "VIDEO"));
         // v1.2.6: 视频放不出来(编码/容器不支持)时给明确提示, 不再黑屏
         if (media.tagName === "VIDEO") {
           media.addEventListener("error", () => {
+            hardStopMedia(mediaBox);
             mediaBox.innerHTML = "";
             mediaBox.appendChild(unplayableBox(cur.name));
           });
+        }
+        if (media.tagName === "AUDIO") {
+          media.addEventListener("error", () => {
+            hardStopMedia(mediaBox);
+            mediaBox.innerHTML = "";
+            mediaBox.appendChild(unplayableBox(cur.name, true));
+          }, { once: true });
         }
         rowsEl.innerHTML = "";
         rowsEl.appendChild(labeledRow([{ zh: "文件名: ", text: cur.name }]));

@@ -1,8 +1,8 @@
 # ComfyUI-AssetManager
 
-An in-panel **asset manager** for ComfyUI that auto-archives every image/video you generate — browse, search, batch-delete, and one-click backup.
+An in-panel **asset manager** for ComfyUI that auto-archives every image/video/audio you generate — browse, search, batch-delete, and one-click backup.
 
-集成进 ComfyUI 网页的**资产管理面板**，自动归档你跑出的每一张图/视频，随取随用、可搜索、可批量删除、可一键备份。
+集成进 ComfyUI 网页的**资产管理面板**，自动归档你跑出的每一张图/视频/音频，随取随用、可搜索、可批量删除、可一键备份。
 
 ## ✨ Features · 功能亮点
 
@@ -10,8 +10,8 @@ An in-panel **asset manager** for ComfyUI that auto-archives every image/video y
   **自动归档** — 后台线程自动监视输出目录，新产物即时入库（首次运行也会归档 output 目录里已有的产物），并提取**提示词 / 正负词 / 参数(seed/steps/采样器…) / 模型与 LoRA / 完整工作流**元数据（读 PNG/WebP 内嵌元数据、MP4/WebM 的 ffmpeg 元数据）。
 - **Backup library switch · 备份目录开关** — a 「显示备份目录」 toggle in Asset settings (off by default). **Off = the backup library is invisible and read-only**: scan / audit / trash / repair / cleanup / download / delete are all refused, and the grid/calendar list the output directory instead (preview, download and delete still work there). **The background backup keeps running either way** — the switch never touches collection. **On = the full backup library**: entries with prompts/models plus every backup operation.<br>
   **备份目录开关** — 资产设置里的「显示备份目录」开关（默认关）。**关 = 备份库不可见、不可操作**：扫描/体检/回收站/修复/清理旧产物/下载/删除一律拒绝，网格/日历改为列输出目录（在那边照样能预览、下载、删除）。**后台备份无论开关都照常跑** —— 开关永远不碰采集链路。**开 = 完整备份库**：带提示词/模型的条目，以及全部备份操作。
-- **Three views** — grid view + **calendar view** (grouped by date, with daily image/video count badges; click a day to see that day's assets) + **folder view** (see below).<br>
-  **三视图浏览** — 网格视图 + **日历视图**（按日期归档，每天显示图/视频数量徽标，点某天看当天产物）+ **文件夹视图**（见下）。
+- **Three views** — grid view + **calendar view** (grouped by date, with daily image/video/audio count badges; click a day to see that day's assets) + **folder view** (see below).<br>
+  **三视图浏览** — 网格视图 + **日历视图**（按日期归档，每天显示图/视频/音频数量徽标，点某天看当天产物）+ **文件夹视图**（见下）。
 - **Folder view** — a third view, side by side with grid and calendar, that browses your output directory as a **folder tree in the left panel** while the **right panel stays a pure image grid** (no buttons eating into your viewing area): **create / rename / delete** folders in place (deleting a non-empty folder asks for confirmation first), click any folder in the tree — or just press `↑` / `↓` — and the right panel switches to that folder's images immediately. A clickable breadcrumb replaces the old "up" button, so jumping to any parent takes one click. The left and right panels **scroll independently**, so reading the tree never drags the images with it; a `根` (Root) row sits at the top of the tree, and long folder names **wrap** instead of being cut off.<br>
   **文件夹视图** — 与网格、日历并列的第三个视图：**左栏是文件夹树**，**右栏保持纯图片网格**（不再被按钮挤占看图区域）。可就地**新建 / 改名 / 删除**文件夹（删非空会先二次确认）；点树中任一文件夹、或直接按 `↑` / `↓`，右侧**立刻**切到该文件夹的图片；可点面包屑取代原来的「上级」按钮，回任一层都只要一次点击。**左右两栏各自独立滚动**，翻树不会把图片一起带走；树顶有 `根` 行，文件夹名过长会**自动换行**而不是被截断。
 - **Folder preview pages like the other views · 文件夹视图也能翻页** — opening an image inside the folder view gives you the same `←` / `→` (and on-screen arrows) paging as the grid and calendar: wraps around, shows `n / total`, preloads neighbours, `Esc` closes.<br>
@@ -20,6 +20,10 @@ An in-panel **asset manager** for ComfyUI that auto-archives every image/video y
   **多选文件夹并下载** —— 一套多选模式，**两种选中类型互斥**：勾了文件就清掉文件夹勾选，勾了文件夹就清掉文件勾选，两类都有可见的 `✓`。勾选文件夹后点 `下载` 会把**文件夹里的东西全部下下来（含子目录）**；只勾文件就只下这些文件。`删除` 会删掉勾选的文件夹（一次性确认框里列出各自文件数），没勾选时删当前文件夹；`剪切`/`粘贴` 始终只对文件，`改名` 始终作用于当前文件夹。
 - **Videos the browser cannot play are handled.** Non-browser containers like `.mkv` never appear in the lists, and if a video still fails to load in the preview (e.g. HEVC) the dialog says "the browser cannot play this video" instead of showing a black box — with the `下载文件` button right there. Animated `.gif` outputs are rendered as images, so they preview correctly too.<br>
   **浏览器放不出来的视频有明确处理。** `.mkv` 这类非浏览器容器不会出现在任何列表里；若预览中仍有视频加载失败（如 HEVC），弹窗会显示"浏览器无法播放该视频"而不是黑屏，旁边就是 `下载文件` 按钮。`.gif` 动图产物现在按图片渲染，也能正常预览。
+- **Audio is a first-class asset · 音频是第一类资产** — `.flac .mp3 .wav .ogg .opus .m4a .aac .aiff .aif` from minimax / yue / stable-audio-3 and similar nodes are archived, listed in all three views, filterable by a dedicated `音频` button, counted on the calendar, and preview / download / delete just like images and videos. The card cover is a **waveform** drawn by `ffmpeg` (falls back to a ♪ tile without it), so clips don't all look identical. Audio that the browser cannot decode (`.aiff`) stays visible and says so in the preview — unlike `.mkv`, which is hidden. Prompt metadata is usually absent (audio nodes don't embed it the way PNG does), so those cards show `(未检测到提示词)`.<br>
+  **音频是第一类资产** —— minimax / yue / stable-audio-3 这类节点的 `.flac .mp3 .wav .ogg .opus .m4a .aac .aiff .aif` 会被归档、在三个视图里都能看到、有独立的 `音频` 筛选按钮、日历上单独计数，预览/下载/删除和图片视频一样。卡片封面是 `ffmpeg` 画的**波形图**（没有 ffmpeg 时退 ♪ 图标块），不会一堆音频长得一模一样。浏览器解不了的 `.aiff` 仍然可见、在预览里明说 —— 这点和 `.mkv`（直接隐藏）刻意不同。音频节点一般不内嵌提示词，所以这类卡片显示 `(未检测到提示词)`。
+- **Preview autoplays and loops · 预览自动循环播放** — open an audio or video item and it starts playing right away and keeps looping; press the native pause button to stop, or just close the preview. Paging to the next item or closing the dialog stops the previous one first (a detached media element keeps playing, which with looping would stack sound).<br>
+  **预览自动循环播放** —— 打开音频/视频条目就直接开播并一直循环；要停就按原生暂停键，或直接关闭预览。翻页或关闭弹窗会先停掉上一段（媒体元素脱离 DOM 后仍会继续播，加了循环就会叠音）。
 - **Folder preview matches the other views · 文件夹视图预览与其它视图一致** — opening a file inside the folder view gives the same buttons as the grid and calendar previews: `复制提示词`, `下载文件`, `🗑 从硬盘删除` (plus the `←` / `→` paging). `下载文件` saves the file itself (the original output file in the folder view, the archived media copy in the grid/calendar views). Files that were never archived have the prompt button greyed out; the delete confirmation says when the archive copy will be removed too.<br>
   **文件夹视图预览与其它视图一致** —— 在文件夹视图里打开文件，和网格/日历预览有同样的按钮：`复制提示词`、`下载文件`、`🗑 从硬盘删除`（外加 `←` / `→` 翻页）。`下载文件` 保存的是文件本体——文件夹视图里是 output 的原始文件，网格/日历里是归档库中的媒体副本。从未归档过的文件，提示词按钮置灰；删除确认框会说明是否会连带删掉归档副本。
 - **Left panel buttons are grouped · 左栏按钮已分组** — two compact rows at the top of the left panel: row 1 is folder actions (`新建` / `改名` / `删除` / `刷新`), row 2 is selection actions (`多选` / `剪切` / `粘贴` / `下载`). The duplicated `多选` is hidden from the top toolbar while the folder view is active, and the navigation row keeps a fixed height so **the tree never jumps** between the root and a folder.<br>
@@ -28,8 +32,8 @@ An in-panel **asset manager** for ComfyUI that auto-archives every image/video y
   **剪切粘贴搬资产** — 在右栏勾选资产 → `剪切` → 打开目标文件夹 → `粘贴`；资产按**整条目**搬移：磁盘文件、归档条目的来源路径、归档状态一并改写，预览/删除/下载照旧可用，也不会被当成新产物重复归档。
 - **Unified sorting** — a single Sort dropdown shared by every view: **created time** ↓/↑, **last-opened time** ↓/↑, **name** A→Z / Z→A; the default is **newest created first**. "Last opened" is tracked by the plugin (the last time you previewed / opened that item in the panel).<br>
   **统一排序** — 一个「排序」下拉作用于所有视图：**新建时间** ↓/↑、**打开时间** ↓/↑、**名称** A→Z / Z→A，**默认最近新建的排在前面**。「打开时间」由插件记录（你在面板里最后一次预览/打开它的时间）。
-- **Search & filter** — full-text search by prompt/model/filename/date; filter by image/video.<br>
-  **搜索与过滤** — 按提示词/模型/文件名/日期全文搜索，按图片/视频过滤。
+- **Search & filter** — full-text search by prompt/model/filename/date; filter by image/video/audio.<br>
+  **搜索与过滤** — 按提示词/模型/文件名/日期全文搜索，按图片/视频/音频过滤。
 - **Junk and half-written files never pollute the library.** Partial-download suffixes (`.part` / `.tmp` / `.crdownload` / `.download`) and 0-byte media files are skipped by the scanner and hidden from every list, the folder tree and folder downloads; broken archive entries (media deleted or 0-byte) stay out of the grid and calendar. Files that don't support previewing show a hint instead of an empty dialog, and the folder-view paging sequence contains only previewable media.<br>
   **垃圾与半成品文件不会污染资产库。** 半成品后缀（`.part` / `.tmp` / `.crdownload` / `.download`）与 0 字节媒体文件被扫描器跳过，不出现在任何列表/左栏树/文件夹下载里；媒体缺失或 0 字节的坏归档条目不进网格/日历。无法预览的文件点击时只给提示、不弹空窗；文件夹视图翻页序列只含可预览媒体。
 - **Workflow is always one click away, without loose files.** The archive no longer drops a `workflow.json` next to every asset (the workflow is already embedded in the PNG/MP4 — verified by key-by-key comparison on real data); the preview's `保存 workflow.json` button reassembles it from the entry's `info.json` on demand, saved as `<媒体名>.workflow.json` so it always pairs with the asset. Existing entries keep their old files untouched.<br>
@@ -57,8 +61,8 @@ An in-panel **asset manager** for ComfyUI that auto-archives every image/video y
   **大图翻页** — 大图预览里按 `←` / `→`（或屏幕左右箭头）直接翻当前这批图，不用关掉再点下一张；循环切换、显示 `n / 总数`、`Esc` 关闭、相邻图预加载。预览面板现在与主面板同高、宽约 +30%，箭头在图片外、贴着面板边缘。
 - **Batch delete** — multi-select and delete from disk in one click (archive copy + original output file); single delete too.<br>
   **批量删除** — 多选勾选后一键从硬盘删除（归档副本 + output 原始文件），单个删除也可。
-- **Clean downloads** — the ⬇ Download button only saves the images/videos themselves, flattened into one folder/ZIP (no `workflow.json` / `info.json` / `prompt.txt`, thumbnails are never downloaded, no per-asset folders). Two settings switch the metadata and the folder layout back on.<br>
-  **干净下载** — 点「⬇ 下载」默认只保存图片/视频本体，全部平铺在一个文件夹/ZIP 里（不带 `workflow.json` / `info.json` / `prompt.txt`，缩略图始终不下载，不建每张图的文件夹）；设置里两个开关可把元数据和文件夹结构打开。
+- **Clean downloads** — the ⬇ Download button only saves the images/videos/audio themselves, flattened into one folder/ZIP (no `workflow.json` / `info.json` / `prompt.txt`, thumbnails are never downloaded, no per-asset folders). Two settings switch the metadata and the folder layout back on.<br>
+  **干净下载** — 点「⬇ 下载」默认只保存图片/视频/音频本体，全部平铺在一个文件夹/ZIP 里（不带 `workflow.json` / `info.json` / `prompt.txt`，缩略图始终不下载，不建每张图的文件夹）；设置里两个开关可把元数据和文件夹结构打开。
 - **Range select** — in multi-select mode hold `Shift` and click another card to select everything in between (works in grid and calendar-day lists; `Shift`-click also switches multi-select on).<br>
   **连选一段** — 多选模式下按住 `Shift` 再点另一张，两次点击之间的图全部选中（网格与日历当天列表都生效；未开多选时 `Shift`+点击会自动进入多选）。
 - **Live refresh** — the panel auto-syncs every 8 seconds; files manually copied into the output directory get archived, and manual deletions disappear automatically.<br>
@@ -119,8 +123,8 @@ Download the repo zip and extract it into `ComfyUI/custom_nodes/`, keeping the f
 
 1. Start ComfyUI and click "**Asset Manager**" in the top menu bar to open the panel.<br>
    启动 ComfyUI，顶部菜单栏点「**资产管理**」打开面板。
-2. Top toolbar: search box, view switch (grid / calendar / **folder**), all/image/video filter, **Sort**, multi-select, backup, scan, settings.<br>
-   顶部工具栏：搜索框、视图切换（网格 / 日历 / **文件夹**）、全部/图片/视频过滤、**排序**、多选、备份、扫描、资产设置。
+2. Top toolbar: search box, view switch (grid / calendar / **folder**), all/image/video/audio filter, **Sort**, multi-select, backup, scan, settings.<br>
+   顶部工具栏：搜索框、视图切换（网格 / 日历 / **文件夹**）、全部/图片/视频/音频过滤、**排序**、多选、备份、扫描、资产设置。
 3. Click an asset → preview dialog: copy prompt / download the file / delete from disk. (The workflow is still embedded in every PNG/MP4 and kept in each archive entry's `info.json`.)<br>
    点产物 → 预览弹窗：复制提示词 / 下载文件 / 从硬盘删除。（工作流元数据仍内嵌在每个 PNG/MP4 里，也保留在归档条目的 `info.json` 中。）
 4. **Folder view**: the left panel top holds two compact button rows (`新建` / `改名` / `删除` / `刷新` for folders, then `多选` / `剪切` / `粘贴` / `下载` for the ticked items — no icons, to save space); below them the breadcrumb and then the **whole folder tree** of your output directory (a `根` row on top). Click any folder, or walk the tree with `↑` / `↓`, and the right panel switches to that folder's images right away; the tree keeps its place while you move around, so nothing jumps. `新建` creates inside the current folder; `改名` acts on the current folder. To move assets: turn on `多选`, tick the assets in the right panel, press `剪切`, walk to the target folder, press `粘贴`. To download: tick files, or tick folders (the ticks are visible, and folder/file selection are mutually exclusive), then press `下载` — folder downloads include sub-folders. Opening a file shows the same preview buttons as the other views.<br>

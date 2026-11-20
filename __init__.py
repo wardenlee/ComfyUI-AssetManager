@@ -20,7 +20,7 @@ WEB_DIRECTORY = "web"
 NODE_CLASS_MAPPINGS = {}
 NODE_DISPLAY_NAME_MAPPINGS = {}
 
-__version__ = "1.3.9"
+__version__ = "1.3.10"
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _cfg = assets_core.load_config(BASE_DIR)
@@ -318,9 +318,10 @@ async def asset_output_file(request):
 @PromptServer.instance.routes.get("/asset/thumb")
 async def asset_thumb(request):
     """v1.3.6: 视频封面帧 —— 任何视频(归档/未归档)都能出图, 结果落盘缓存
+    v1.3.10: 音频同样走这里, 封面换成波形图(showwavespic)。
 
-    src=arch 走归档目录, src=out 走当前输出目录; 只接受视频扩展名。
-    生成失败返回 404, 前端再用 <video>+canvas 兜底截帧。
+    src=arch 走归档目录, src=out 走当前输出目录; 只接受视频/音频扩展名。
+    生成失败返回 404, 前端再用 <video>+canvas 兜底(音频则退回 ♪ 图标)。
     """
     src = (request.rel_url.query.get("src") or "out").lower()
     rel = request.rel_url.query.get("p", "")
@@ -330,11 +331,11 @@ async def asset_thumb(request):
         p = assets_core.safe_media_path(_arch, rel)
     else:
         p = assets_core.safe_output_path(_current_output_dir(), rel)
-    if not p or p.suffix.lower() not in assets_core.VIDEO_EXT:
+    if not p or p.suffix.lower() not in (assets_core.VIDEO_EXT | assets_core.AUDIO_EXT):
         return web.Response(status=404, text="not found")
 
     def _go():
-        return assets_core.ensure_video_poster(p, THUMB_CACHE_DIR, _cfg)
+        return assets_core.ensure_media_poster(p, THUMB_CACHE_DIR, _cfg)
 
     try:
         poster = await asyncio.to_thread(_go)
