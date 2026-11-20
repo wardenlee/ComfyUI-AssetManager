@@ -193,6 +193,8 @@ app.registerExtension({
       "自动归档新产物": "Auto-archive new assets",
       "自动下载新产物": "Auto-download new assets",
       "归档安装前已有的产物": "Archive assets already present on install",
+      "显示归档库目录": "Show the archive library directory",
+      "归档库已隐藏（资产设置 → 显示归档库目录）": "Archive library is hidden (toggle it in Asset settings → Show the archive library directory)",
       "缩略图宽度(px)": "Thumbnail width (px)",
       "扫描间隔(秒)": "Scan interval (sec)",
       "浏览…": "Browse…",
@@ -866,10 +868,16 @@ app.registerExtension({
     }
 
     function renderGrid() {
-      const list = sortRuns(filtered(runs));
+      // v1.3.7: 归档库隐藏时, 网格视图只显示隐藏空态(即使 runs 里有残留数据也不渲染)
+      const hidden = !(curConfig && curConfig.config && curConfig.config.show_archive === true);
+      const list = hidden ? [] : sortRuns(filtered(runs));
       gridEl.innerHTML = "";
       countEl.textContent = list.length + " / " + runs.length;
-      if (!list.length) { gridEl.appendChild($el("div.asm-empty", { textContent: t("没有匹配的产物") })); return; }
+      if (!list.length) {
+        if (hidden) gridEl.appendChild($el("div.asm-empty", { textContent: t("归档库已隐藏（资产设置 → 显示归档库目录）") }));
+        else gridEl.appendChild($el("div.asm-empty", { textContent: t("没有匹配的产物") }));
+        return;
+      }
       for (const r of list) renderCard(r, gridEl, list);
     }
 
@@ -910,8 +918,10 @@ app.registerExtension({
         day.onclick = () => { selDate = dk; renderCal(); };
         calGrid.appendChild(day);
       }
-      const base = (selDate && byDate[selDate]) ? byDate[selDate].length : 0;
-      const list = selDate ? sortRuns(filtered(byDate[selDate] || [])) : [];
+      // v1.3.7: 归档库隐藏时, 日历视图不给任何计数与条目(空态替代)
+      const hidden = !(curConfig && curConfig.config && curConfig.config.show_archive === true);
+      const base = hidden ? 0 : ((selDate && byDate[selDate]) ? byDate[selDate].length : 0);
+      const list = hidden ? [] : (selDate ? sortRuns(filtered(byDate[selDate] || [])) : []);
       let title;
       if (selDate) {
         title = LANG === "zh" ? (selDate + " · 当天归档 " + base + " 条") : (selDate + " · " + base + " assets");
@@ -923,7 +933,8 @@ app.registerExtension({
       }
       calListTitle.innerHTML = title;
       calListCards.innerHTML = "";
-      if (selDate && base === 0) calListCards.appendChild($el("div.asm-empty", { textContent: t("当天没有归档产物") }));
+      if (hidden) calListCards.appendChild($el("div.asm-empty", { textContent: t("归档库已隐藏（资产设置 → 显示归档库目录）") }));
+      else if (selDate && base === 0) calListCards.appendChild($el("div.asm-empty", { textContent: t("当天没有归档产物") }));
       else if (!list.length && selDate) calListCards.appendChild($el("div.asm-empty", { textContent: t("当天没有匹配当前筛选的产物") }));
       else for (const r of list) renderCard(r, calListCards, list);
     }
@@ -1352,6 +1363,13 @@ app.registerExtension({
       }
       updateBatchBtn();
       updateFolderBtns();
+      updateArchiveBtns();
+    }
+
+    // v1.3.7: 归档库隐藏时收起归档专属按钮(体检/回收站/修复/清理旧产物), 界面少噪音; 文件夹视图不受影响
+    function updateArchiveBtns() {
+      const hidden = !(curConfig && curConfig.config && curConfig.config.show_archive === true);
+      [auditBtn, trashBtn, repairBtn, cleanupBtn].forEach((b) => { b.style.display = hidden ? "none" : ""; });
     }
 
     // ---------- 多选 / 批量删除 ----------
@@ -1895,6 +1913,8 @@ app.registerExtension({
       fAutoDl.checked = c.auto_download === true;
       const fExisting = $el("input", { type: "checkbox" });
       fExisting.checked = c.archive_existing === true;
+      const fShowArch = $el("input", { type: "checkbox" });
+      fShowArch.checked = c.show_archive === true;
       await loadDlHandle();
       if (dlDirHandle && dlDirHandle.name && !fDlDir.value) fDlDir.value = dlDirHandle.name;
       const fThumb = $el("input", { type: "number", min: 100, max: 2000, value: String(c.thumb_width || 480) });
@@ -1937,6 +1957,7 @@ app.registerExtension({
           $el("div.chk", {}, [fAuto, bindText($el("span"), "自动归档新产物")]),
           $el("div.chk", {}, [fAutoDl, bindText($el("span"), "自动下载新产物")]),
           $el("div.chk", {}, [fExisting, bindText($el("span"), "归档安装前已有的产物")]),
+          $el("div.chk", {}, [fShowArch, bindText($el("span"), "显示归档库目录")]),
           row("缩略图宽度(px)", fThumb),
           row("扫描间隔(秒)", fInterval),
         ]),
@@ -1957,6 +1978,7 @@ app.registerExtension({
           auto_archive: fAuto.checked,
           auto_download: fAutoDl.checked,
           archive_existing: fExisting.checked,
+          show_archive: fShowArch.checked,
           download_mode: fMode.value,
           download_include_metadata: fMeta.checked,
           download_keep_folders: fKeepFolders.checked,

@@ -20,7 +20,7 @@ WEB_DIRECTORY = "web"
 NODE_CLASS_MAPPINGS = {}
 NODE_DISPLAY_NAME_MAPPINGS = {}
 
-__version__ = "1.3.6"
+__version__ = "1.3.7"
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _cfg = assets_core.load_config(BASE_DIR)
@@ -129,8 +129,18 @@ def _skip_source_prefixes():
     return res
 
 
+# --- v1.3.7: 「显示归档库目录」开关: 只控 UI 可见与操作, 不影响后台采集 --------
+def _archive_visible():
+    """开关开=归档库在面板内可见且可操作; 关(含 config 缺失该键的旧配置)=不可见不可操作"""
+    return bool(_cfg.get("show_archive", False))
+
+
 @PromptServer.instance.routes.get("/asset/list")
 async def asset_list(request):
+    if not _archive_visible():
+        # 与正常响应同构的空清单, 前端据此渲染空态提示(不算错误)
+        return web.json_response({"ok": True, "count": 0, "runs": [],
+                                 "archive_hidden": True})
     def _go():
         return assets_core.list_runs(_arch, assets_core.load_open_state(_arch),
                                      _skip_source_prefixes())
@@ -142,6 +152,8 @@ async def asset_list(request):
 @PromptServer.instance.routes.get("/asset/audit")
 async def asset_audit(request):
     """v1.2.9 归档库体检: 只读清单(重复来源/不可预览/孤儿/同内容), 零删除。"""
+    if not _archive_visible():
+        return web.json_response({"ok": False, "error": "archive_hidden"})
     def _go():
         return assets_core.audit_archive(_arch, _current_output_dir(),
                                          _skip_source_prefixes())
@@ -308,6 +320,8 @@ async def asset_thumb(request):
     src = (request.rel_url.query.get("src") or "out").lower()
     rel = request.rel_url.query.get("p", "")
     if src == "arch":
+        if not _archive_visible():
+            return web.json_response({"ok": False, "error": "archive_hidden"})
         p = assets_core.safe_media_path(_arch, rel)
     else:
         p = assets_core.safe_output_path(_current_output_dir(), rel)
@@ -328,6 +342,8 @@ async def asset_thumb(request):
 
 @PromptServer.instance.routes.post("/asset/touch_open")
 async def asset_touch_open(request):
+    if not _archive_visible():
+        return web.json_response({"ok": False, "error": "archive_hidden"})
     body = await _json_body(request)
 
     def _go():
@@ -421,6 +437,8 @@ async def asset_set_config(request):
         updates["auto_archive"] = bool(updates["auto_archive"])
     if "archive_existing" in updates:
         updates["archive_existing"] = bool(updates["archive_existing"])
+    if "show_archive" in updates:
+        updates["show_archive"] = bool(updates["show_archive"])
 
     global _arch, _state
     with _LOCK:
@@ -441,6 +459,8 @@ async def asset_set_config(request):
 
 @PromptServer.instance.routes.post("/asset/delete")
 async def asset_delete(request):
+    if not _archive_visible():
+        return web.json_response({"ok": False, "error": "archive_hidden"})
     try:
         body = await request.json()
     except Exception:
@@ -458,6 +478,8 @@ async def asset_delete(request):
 @PromptServer.instance.routes.get("/asset/trash_list")
 async def asset_trash_list(request):
     """v1.3.0 回收站清单(只读)"""
+    if not _archive_visible():
+        return web.json_response({"ok": False, "error": "archive_hidden"})
     def _go():
         return assets_core.trash_list(_arch)
 
@@ -471,6 +493,8 @@ async def asset_trash_list(request):
 @PromptServer.instance.routes.post("/asset/trash_restore")
 async def asset_trash_restore(request):
     """v1.3.0 恢复回收站批次(或单个 item)到原位"""
+    if not _archive_visible():
+        return web.json_response({"ok": False, "error": "archive_hidden"})
     body = await _json_body(request)
     batch = body.get("batch")
     item = body.get("item") or None
@@ -489,6 +513,8 @@ async def asset_trash_restore(request):
 @PromptServer.instance.routes.post("/asset/trash_purge")
 async def asset_trash_purge(request):
     """v1.3.0 永久删除一个回收站批次(前端二次确认后调用)"""
+    if not _archive_visible():
+        return web.json_response({"ok": False, "error": "archive_hidden"})
     body = await _json_body(request)
     batch = body.get("batch")
 
@@ -505,6 +531,8 @@ async def asset_trash_purge(request):
 
 @PromptServer.instance.routes.post("/asset/delete_batch")
 async def asset_delete_batch(request):
+    if not _archive_visible():
+        return web.json_response({"ok": False, "error": "archive_hidden"})
     try:
         body = await request.json()
     except Exception:
@@ -542,6 +570,8 @@ async def asset_scan(request):
 @PromptServer.instance.routes.post("/asset/repair")
 async def asset_repair(request):
     """v1.3.1 归档修复: 对齐 source_rel / 重建缺失 info.json / 孤儿标记(不删任何文件)"""
+    if not _archive_visible():
+        return web.json_response({"ok": False, "error": "archive_hidden"})
     def _go():
         with _LOCK:
             return assets_core.repair_archive(_arch, _current_output_dir(), _state,
@@ -557,6 +587,8 @@ async def asset_repair(request):
 @PromptServer.instance.routes.get("/asset/cleanup_candidates")
 async def asset_cleanup_candidates(request):
     """v1.3.3 清理旧产物: 按天数列出候选(只读清单, 不删)"""
+    if not _archive_visible():
+        return web.json_response({"ok": False, "error": "archive_hidden"})
     try:
         days = float(request.rel_url.query.get("days", "0") or 0)
     except Exception:
@@ -575,6 +607,8 @@ async def asset_cleanup_candidates(request):
 @PromptServer.instance.routes.post("/asset/cleanup_execute")
 async def asset_cleanup_execute(request):
     """v1.3.3 清理旧产物: 勾选的条目移入回收站(output 源文件同批)"""
+    if not _archive_visible():
+        return web.json_response({"ok": False, "error": "archive_hidden"})
     body = await _json_body(request)
     dirs = body.get("dirs") or []
     if not isinstance(dirs, list):
@@ -594,6 +628,8 @@ async def asset_cleanup_execute(request):
 
 @PromptServer.instance.routes.post("/asset/backup")
 async def asset_backup(request):
+    if not _archive_visible():
+        return web.json_response({"ok": False, "error": "archive_hidden"})
     def _go():
         wdirs = []
         if folder_paths is not None:
@@ -612,6 +648,8 @@ async def asset_backup(request):
 
 @PromptServer.instance.routes.get("/asset/file")
 async def asset_file(request):
+    if not _archive_visible():
+        return web.json_response({"ok": False, "error": "archive_hidden"})
     rel = request.rel_url.query.get("p", "")
     p = assets_core.safe_media_path(_arch, rel)
     if not p:
@@ -621,6 +659,8 @@ async def asset_file(request):
 
 @PromptServer.instance.routes.get("/asset/workflow")
 async def asset_workflow(request):
+    if not _archive_visible():
+        return web.json_response({"ok": False, "error": "archive_hidden"})
     rel = request.rel_url.query.get("p", "")
     p = assets_core.safe_media_path(_arch, rel)
     if not p:

@@ -5,6 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 > 本文件记录 **ComfyUI-AssetManager** 的所有重要改动，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.3.7] - 2026-11-20
+
+### Added · 新增
+
+- **A switch to hide the whole archive library.** Asset settings now has a 「显示归档库目录」 (show the archive library directory) toggle, off by default. When off, the grid and calendar views show a "archive hidden" empty state instead of the archived entries, and every archive operation — preview-delete, download, audit, trash, repair, cleanup, backup, plus the archive-side file/workflow/thumb endpoints — is refused; the folder view is unaffected. Toggling it on restores all v1.3.6 behavior. Backend auto-archiving keeps running regardless: the switch governs UI visibility and operations only, never the collection pipeline.<br>
+  **一个开关整体隐藏归档库。** 资产设置新增「显示归档库目录」开关，默认关闭。关闭时，网格/日历视图显示「归档库已隐藏」空态而非归档条目，归档库的全部操作（预览删除、下载、体检、回收站、修复、清理旧产物、备份，以及归档侧的取文件/取工作流/取封面接口）一律拒绝；文件夹视图不受影响。打开开关即恢复 v1.3.6 的全部功能。后台自动归档照常运行：开关只管 UI 可见与操作，不碰采集链路。
+
 ## [1.3.6] - 2026-11-19
 
 ### Fixed · 修复

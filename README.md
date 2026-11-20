@@ -8,6 +8,8 @@ An in-panel **asset manager** for ComfyUI that auto-archives every image/video y
 
 - **Auto-archive** — a background thread watches the output directory and archives every asset instantly (on first run it also imports the assets already in the output directory), extracting **prompt / positive-negative / params (seed, steps, sampler…) / models & LoRA / full workflow** metadata (reads PNG/WebP embedded metadata and MP4/WebM ffmpeg metadata).<br>
   **自动归档** — 后台线程自动监视输出目录，新产物即时入库（首次运行也会归档 output 目录里已有的产物），并提取**提示词 / 正负词 / 参数(seed/steps/采样器…) / 模型与 LoRA / 完整工作流**元数据（读 PNG/WebP 内嵌元数据、MP4/WebM 的 ffmpeg 元数据）。
+- **Archive library visibility switch · 归档库显示开关** — a 「显示归档库目录」 toggle in Asset settings (off by default). When off, the grid and calendar views show an "archive hidden" empty state and every archive operation (delete, download, audit, trash, repair, cleanup, backup) is refused; the folder view and the background archiving itself are unaffected. Switch it on to get the full library back.<br>
+  **归档库显示开关** — 资产设置里的「显示归档库目录」开关（默认关）。关闭时，网格/日历视图显示「归档库已隐藏」空态，归档库的全部操作（删除、下载、体检、回收站、修复、清理旧产物、备份）一律拒绝；文件夹视图与后台自动归档本身不受影响。打开开关即恢复完整归档库。
 - **Three views** — grid view + **calendar view** (grouped by date, with daily image/video count badges; click a day to see that day's assets) + **folder view** (see below).<br>
   **三视图浏览** — 网格视图 + **日历视图**（按日期归档，每天显示图/视频数量徽标，点某天看当天产物）+ **文件夹视图**（见下）。
 - **Folder view** — a third view, side by side with grid and calendar, that browses your output directory as a **folder tree in the left panel** while the **right panel stays a pure image grid** (no buttons eating into your viewing area): **create / rename / delete** folders in place (deleting a non-empty folder asks for confirmation first), click any folder in the tree — or just press `↑` / `↓` — and the right panel switches to that folder's images immediately. A clickable breadcrumb replaces the old "up" button, so jumping to any parent takes one click. The left and right panels **scroll independently**, so reading the tree never drags the images with it; a `根` (Root) row sits at the top of the tree, and long folder names **wrap** instead of being cut off.<br>
@@ -138,6 +140,7 @@ A `config.json` is generated on your first settings save (template at [`config.e
 | `backup_dir` | Backup zip directory (empty = `<ComfyUI>/asset_backups`) / 备份 zip 存放目录（空 = `<ComfyUI>/asset_backups`） |
 | `auto_archive` | Auto-archive new assets (true/false) / 是否自动归档新产物（true/false） |
 | `archive_existing` | On first run, also archive assets already in the output directory (false = only new assets after install) / 首次运行时是否也归档 output 里已有的历史产物（false = 只归档安装后的新产物） |
+| `show_archive` | Show the archive library in the panel (false = grid/calendar show an empty state and all archive operations are refused; archiving itself keeps running) / 面板内是否显示归档库目录（false = 网格/日历显示空态、归档库操作一律拒绝；自动归档本身照常运行） |
 | `thumb_width` | Thumbnail width (px) / 缩略图宽度(px) |
 | `interval_sec` | Archive scan interval (seconds) / 归档扫描间隔(秒) |
 | `download_include_metadata` | Also download `workflow.json` / `info.json` / `prompt.txt` (default `false` = images/videos only; thumbnails are never downloaded) / 下载时是否附带 json/txt 元数据（默认 `false`＝只下图片/视频本体；缩略图始终不下载） |

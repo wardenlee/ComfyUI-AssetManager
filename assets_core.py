@@ -48,6 +48,7 @@ DEFAULT_CONFIG = {
     "archive_dir": "",  # 空 = 使用 <ComfyUI>/asset_archive
     "backup_dir": "",   # 空 = 使用 <ComfyUI>/asset_backups
     "auto_archive": True,
+    "show_archive": False,  # v1.3.7: 开关关闭时归档库在面板内不可见、不可操作(采集照常)
     "archive_existing": False,  # 首次运行是否归档 output 里已有的历史产物(False=只归档安装后的新产物)
     "thumb_width": 480,
     "interval_sec": 10,
