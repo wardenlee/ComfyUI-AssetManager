@@ -48,7 +48,7 @@ DEFAULT_CONFIG = {
     "archive_dir": "",  # 空 = 使用 <ComfyUI>/asset_archive
     "backup_dir": "",   # 空 = 使用 <ComfyUI>/asset_backups
     "auto_archive": True,
-    "show_archive": False,  # v1.3.8: 开关关 = 不归档(磁盘只留 output 一套) + 网格/日历直接读 output; 开 = 归档库视图与全部操作
+    "show_archive": False,  # v1.3.9: 只控归档库(备份)在面板的可见与可操作; 自动归档照常跑, 与它无关
     "archive_existing": False,  # 首次运行是否归档 output 里已有的历史产物(False=只归档安装后的新产物)
     "thumb_width": 480,
     "interval_sec": 10,
@@ -429,7 +429,7 @@ def ensure_video_poster(media_path, cache_dir, cfg):
     return None
 
 
-def archive_file(rel, src, archive_dir, state, cfg):
+def archive_file(rel, src, archive_dir, state, cfg, reuse_dir=None):
     st = os.stat(src)
     state_key = {"size": st.st_size, "mtime_ns": st.st_mtime_ns}
     if state.get(rel) == state_key:
@@ -453,13 +453,36 @@ def archive_file(rel, src, archive_dir, state, cfg):
     date_folder = mtime.strftime("%Y-%m-%d")
     run_id = mtime.strftime("%Y%m%d-%H%M%S") + "_" + (safe or "output")
     run_dir = arch / date_folder / run_id
-    n = 2
-    while run_dir.exists():
-        run_dir = arch / date_folder / f"{run_id}_{n}"
-        n += 1
-    run_dir.mkdir(parents=True, exist_ok=True)
+    # v1.3.9: 同一 source_rel 再归档 = **原地覆盖**那条既有条目(用户 2026-11-20:
+    # 备份目录里一个文件只该有 1 套)。旧写法是"新建 run_id_2 + 把旧条目移进回收站",
+    # 结果一次生成在磁盘上留下 2~3 套完全相同的东西 —— 已被用户明确否掉。
+    target = None
+    if reuse_dir:
+        try:
+            cand = (arch / str(reuse_dir).replace("\\", "/")).resolve()
+            if cand.is_dir() and str(cand).startswith(str(arch.resolve()) + os.sep):
+                target = cand
+        except OSError:
+            target = None
+    if target is not None:
+        run_dir = target
+    else:
+        n = 2
+        while run_dir.exists():
+            run_dir = arch / date_folder / f"{run_id}_{n}"
+            n += 1
+        run_dir.mkdir(parents=True, exist_ok=True)
 
     media_name = Path(rel).name
+    if target is not None:
+        # 覆盖前清掉条目里"不属于本次归档"的旧媒体(改名/换扩展名), 避免一条目塞两张图
+        keep = {media_name, "thumb.jpg", "info.json", "prompt.txt", "workflow.json"}
+        try:
+            for p in run_dir.iterdir():
+                if p.is_file() and p.name not in keep:
+                    p.unlink()
+        except OSError:
+            pass
     shutil.copy2(src, run_dir / media_name)
 
     thumb = None
@@ -482,6 +505,9 @@ def archive_file(rel, src, archive_dir, state, cfg):
         "created_at": datetime.fromtimestamp(st.st_ctime).isoformat(timespec="seconds"),
         "source_mtime": datetime.fromtimestamp(st.st_mtime).isoformat(timespec="seconds"),
         "source_rel": rel,
+        # v1.3.9: 绝对路径指纹 —— 日后"同源重归档原地覆盖"必须对得上它, 避免切换输出目录后
+        # 同名文件(ComfyUI_00001_.png)把上一份备份覆盖掉。
+        "source_abs": _abs_key(src),
         "media": media_name,
         "kind": kind,
         "file_size": st.st_size,
@@ -519,6 +545,54 @@ def archive_file(rel, src, archive_dir, state, cfg):
     return {"run": run_dir.name, "dir": run_dir.relative_to(arch).as_posix(), "kind": kind}
 
 
+def _abs_key(p):
+    """路径指纹: 归一化大小写与分隔符, 用于"还是同一个文件吗"的判断(不追求跨平台)"""
+    try:
+        return os.path.normcase(os.path.abspath(str(p))).replace("\\", "/")
+    except Exception:
+        return str(p).replace("\\", "/")
+
+
+def _source_run_map(archive_dir):
+    """source_rel -> (该来源当前那条归档条目的相对目录, 该条目的 source_abs 指纹或 None)。
+
+    v1.3.9: 供 scan_all 做"原地覆盖"。不看 list_runs 的可见性过滤 ——
+    .mkv 这类浏览器放不出来但仍归档的条目也必须能命中, 否则每写一次就多一套。
+    """
+    arch = Path(archive_dir)
+    picked = {}
+    if not arch.is_dir():
+        return {}
+    try:
+        date_dirs = [d for d in arch.iterdir() if d.is_dir() and d.name != TRASH_DIR_NAME]
+    except OSError:
+        return {}
+    for dd in date_dirs:
+        try:
+            run_dirs = list(dd.iterdir())
+        except OSError:
+            continue
+        for rd in run_dirs:
+            info_f = rd / "info.json"
+            if not info_f.is_file():
+                continue
+            try:
+                info = json.loads(info_f.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if not isinstance(info, dict):
+                continue
+            sr = (info.get("source_rel") or "").replace("\\", "/").strip()
+            if not sr:
+                continue
+            stamp = str(info.get("archived_at") or info.get("generated_at") or "")
+            cur = picked.get(sr)
+            if cur is None or stamp > cur[0]:
+                picked[sr] = (stamp, rd.relative_to(arch).as_posix(),
+                              info.get("source_abs") or None)
+    return {k: (v[1], v[2]) for k, v in picked.items()}
+
+
 def scan_all(output_dir, archive_dir, state, cfg):
     out = Path(output_dir)
     if not out.is_dir():
@@ -538,6 +612,25 @@ def scan_all(output_dir, archive_dir, state, cfg):
     state_changed = False
     archive_existing = bool(cfg.get("archive_existing", False))
     baseline_done = bool(state.get("__baseline_done__", False))
+    # v1.3.9: 懒加载的 source_rel -> 既有条目目录; 只在本轮真的出现"有变化"的文件时才扫一次库
+    reuse_map = None
+
+    def _reuse_for(rel_name, src_path):
+        nonlocal reuse_map
+        if reuse_map is None:
+            try:
+                reuse_map = _source_run_map(archive_dir)
+            except Exception:
+                reuse_map = {}
+        hit = reuse_map.get(rel_name)
+        if not hit:
+            return None
+        run_rel, stored_abs = hit
+        # 老条目没有指纹 → 按 rel 认; 新条目必须绝对路径一致,
+        # 否则是"另一个 output 目录里的同名文件"(切换输出目录的常见情形), 不能覆盖。
+        if stored_abs and stored_abs != _abs_key(src_path):
+            return None
+        return run_rel
     for root, dirs, files in os.walk(out):
         dirs[:] = [d for d in dirs
                    if not d.startswith(".") and not _is_hidden(Path(root) / d, hidden)]
@@ -580,20 +673,19 @@ def scan_all(output_dir, archive_dir, state, cfg):
             if not stable:
                 continue
             if rel in state:
-                # 已记录过(归档过或基线过), 文件有变化 → 归档新版本
-                r = archive_file(rel, src, archive_dir, state, cfg)
+                # 已记录过(归档过或基线过), 文件有变化 → 原地覆盖那条既有条目
+                r = archive_file(rel, src, archive_dir, state, cfg, _reuse_for(rel, src))
                 if r:
                     new_runs.append(r)
-                    # v1.3.4: 真机反馈——视频节点先写一版再重写, 两次 scan 各归档一条
-                    # (稳定窗只在单次 scan 内有效)。新条目归档成功后, 把同 source_rel 的
-                    # 旧条目移入回收站(软删除, 可恢复) —— 库里同源只保留最新条目。
-                    _retire_old_runs(rel, r["dir"], archive_dir)
+                    if reuse_map is not None:
+                        reuse_map[rel] = (r["dir"], _abs_key(src))
             elif baseline_done or archive_existing:
-                # 基线已建立后的新文件, 或用户开启"归档历史" → 归档
-                r = archive_file(rel, src, archive_dir, state, cfg)
+                # 基线已建立后的新文件, 或用户开启"备份历史" → 归档
+                r = archive_file(rel, src, archive_dir, state, cfg, _reuse_for(rel, src))
                 if r:
                     new_runs.append(r)
-                    _retire_old_runs(rel, r["dir"], archive_dir)
+                    if reuse_map is not None:
+                        reuse_map[rel] = (r["dir"], _abs_key(src))
             else:
                 # 首次扫描且不归档历史: 只记录基线(不复制文件)
                 state[rel] = cur_key
@@ -1074,10 +1166,11 @@ def _trash_move_one(src, dst):
 
 
 def _retire_old_runs(source_rel, new_dir, archive_dir):
-    """v1.3.4: 同 source_rel 重归档后, 把旧条目移入回收站(软删除, 可恢复)。
+    """[v1.3.4 遗留 · v1.3.9 起 scan_all 不再调用] 把同 source_rel 的旧条目移入回收站。
 
-    只在【新条目归档成功后】由 scan_all 调用; 直接扫 <日期>/<run>/info.json
-    (覆盖 list_runs 隐藏的坏条目); 任一失败不影响其余。
+    v1.3.9 改成"原地覆盖"(archive_file 的 reuse_dir) —— 备份目录里同源只会有 1 条,
+    没有旧条目可退休。保留此函数供回滚/外部清理脚本使用, 勿在归档主链路重新接上:
+    它的副作用是"磁盘上多留一套回收站副本", 用户已明确否掉。
     """
     arch = Path(archive_dir)
     if not arch.is_dir():

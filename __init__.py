@@ -20,7 +20,7 @@ WEB_DIRECTORY = "web"
 NODE_CLASS_MAPPINGS = {}
 NODE_DISPLAY_NAME_MAPPINGS = {}
 
-__version__ = "1.3.8"
+__version__ = "1.3.9"
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _cfg = assets_core.load_config(BASE_DIR)
@@ -63,19 +63,20 @@ def _current_output_dir():
     return (_cfg.get("output_dir") or "").strip()
 
 
-# --- v1.3.8: 「显示归档库目录」开关: 关=不归档+网格/日历读 output; 开=归档库视图与全部操作 ---
+# --- v1.3.9: 「显示归档库目录」只控归档库的可见性与可操作性, 不碰采集链路 ---
+# (v1.3.8 曾把它和自动归档绑在一起, 用户 2026-11-20 17:16 明确要求解耦: 备份照做, 只是看不见)
 # 必须定义在 _watch_loop 之前: 后台线程在模块级就 start(), 第一轮比后面的定义更早执行。
 def _archive_visible():
-    """开关开=归档库在面板内可见可操作且后台照常归档; 关(含旧 config.json 缺该键)=不归档、归档路由全拒绝"""
+    """开关开=归档库在面板内可见可操作; 关(含旧 config.json 缺该键)=不可见不可操作, 但自动归档照跑"""
     return bool(_cfg.get("show_archive", False))
 
 
 def _watch_loop():
     while not _stop.is_set():
-        # v1.3.8: 开关关 = 不复制任何文件(磁盘上只有 output 里的那一套)。
+        # v1.3.9: 自动归档只看 auto_archive, 与显示开关无关 —— /tmp/code 这份备份必须一直做。
         # 判定在循环内做, 所以面板里开关一改, 下一轮就生效(无需重启)。
         try:
-            if _cfg.get("auto_archive", True) and _archive_visible():
+            if _cfg.get("auto_archive", True):
                 out = _current_output_dir()
                 if out:
                     with _LOCK:
@@ -562,7 +563,8 @@ async def asset_delete_batch(request):
 
 @PromptServer.instance.routes.post("/asset/scan")
 async def asset_scan(request):
-    """v1.3.8: 开关关时只回报"未归档", 绝不触发 scan_all —— 否则"不勾选就不复制文件"就破了。"""
+    """v1.3.9: 「扫描」属归档库操作 —— 开关关时直接回 archive_hidden(按钮不生效)。
+    自动归档不受影响: 它走 _watch_loop, 与这个按钮无关。"""
     if not _archive_visible():
         return web.json_response({"ok": True, "new": 0, "skipped": 0, "broken": 0,
                                   "archive_hidden": True})

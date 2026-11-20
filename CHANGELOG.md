@@ -5,6 +5,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 > 本文件记录 **ComfyUI-AssetManager** 的所有重要改动，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.3.9] - 2026-11-20
+
+### Changed · 变更
+
+- **The visibility switch no longer touches collection; it is now just "show the backup directory".** v1.3.8 coupled the two ("switch off = stop archiving"), which the user rejected: the point of the directory is that it *is* a backup. Now off = the backup library is invisible and read-only (scan / audit / trash / repair / cleanup / download / delete all refused), while the background backup keeps running; the grid and calendar list the output directory in that mode. On = the full backup library. Internal identifiers (`show_archive`, `archive_dir`, the `/asset/*` routes, `info.json` fields) are unchanged, so existing configs and data keep working.<br>
+  **显示开关不再管采集，它的职责就一条：要不要看见备份目录。** v1.3.8 把两者绑在一起（关＝停止归档），被用户否掉 —— 那个目录的意义就是"备份"。现在：关＝备份库不可见、不可操作（扫描/体检/回收站/修复/清理/下载/删除一律拒绝），后台备份照常跑，网格/日历此时列输出目录；开＝完整备份库。内部标识（`show_archive`、`archive_dir`、`/asset/*` 路由、`info.json` 字段）一个没动，老配置与老数据继续可用。
+- **UI wording「归档」→「备份」throughout the panel.** The settings row, the two checkboxes, the status badges (已备份/未备份/备份失效), the calendar title, the empty states and the delete confirmations now say 备份; English strings follow (Backup directory / Auto-backup / Backed up …). Old L10N keys are kept so translations are never dropped.<br>
+  **面板里的「归档」统一改称「备份」**：设置项、两个复选项、状态角标（已备份/未备份/备份失效）、日历标题、空态与删除确认全部换成「备份」，英文同步（Backup directory / Auto-backup / Backed up …）。旧 L10N 键保留，避免翻译被丢。
+
+### Fixed · 修复
+
+- **Same file archived twice no longer piles up a second copy.** Re-archiving a changed source now **overwrites that entry in place** (media + info.json + prompt.txt + thumb) instead of creating `run_id_2` and retiring the old one into `_trash` (v1.3.4). Probe before/after: rewrite 1× = 2 sets → now 1 set; rewrite 2× = 3 sets → now 1 set. Overwriting requires the same `source_abs` fingerprint, so a same-named file from a different output directory can never swallow the previous backup.<br>
+  **同一个文件被归档两次不再多出一套。** 源文件变了再归档时，现在**原地覆盖**那条条目（媒体 + info.json + prompt.txt + 缩略图），不再新建 `run_id_2`、也不再把旧条目塞进回收站（v1.3.4 的老做法）。探针前后对比：重写 1 次 2 套 → 现在 1 套；重写 2 次 3 套 → 现在 1 套。覆盖要求 `source_abs` 指纹一致，所以"切了输出目录但文件名相同"的文件绝不会把上一份备份吞掉。
+- `_retire_old_runs` is kept for rollback / external scripts but is no longer called by `scan_all` (its side effect was exactly the extra on-disk copy users complained about).<br>
+  `_retire_old_runs` 保留供回滚与外部脚本使用，但 `scan_all` 不再调用它（它的副作用正是用户抱怨的"磁盘上多一套"）。
+
 ## [1.3.8] - 2026-11-20
 
 ### Fixed · 修复

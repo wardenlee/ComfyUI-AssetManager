@@ -195,7 +195,7 @@ app.registerExtension({
       "自动下载新产物": "Auto-download new assets",
       "归档安装前已有的产物": "Archive assets already present on install",
       "显示归档库目录": "Show the archive library directory",
-      "显示归档库目录（不勾选=网格/日历直接读输出目录，不做任何复制）": "Show the archive library (off = grid & calendar read the output directory directly, nothing is copied)",
+      "显示归档库目录（不勾选=归档库不可见不可操作，备份与网格/日历照常）": "Show the archive library (off = library hidden & read-only; backups and grid/calendar keep working)",
       "归档库已隐藏（资产设置 → 显示归档库目录）": "Archive library is hidden (toggle it in Asset settings → Show the archive library directory)",
       "缩略图宽度(px)": "Thumbnail width (px)",
       "扫描间隔(秒)": "Scan interval (sec)",
@@ -347,6 +347,20 @@ app.registerExtension({
       "该文件下载失败": "This file could not be downloaded",
       "删除失败: ": "Delete failed: ",
       "已删除 ": "Deleted ",
+    
+      // ---- v1.3.9: 用户可见文案统一用「备份」(旧「归档」键保留, 已无调用方) ----
+      "备份目录": "Backup directory",
+      "自动备份新产物": "Auto-backup new assets",
+      "备份安装前已有的产物": "Back up assets already present on install",
+      "显示备份目录": "Show the backup directory",
+      "显示备份目录（不勾选=备份不可见不可操作，备份与网格/日历照常）": "Show the backup directory (off = backups hidden and read-only; backups and grid/calendar keep working)",
+      "当天没有备份产物": "No backups on this day",
+      "该文件未备份，没有提示词元数据": "Not backed up — no prompt metadata",
+      "备份体检": "Backup audit",
+      "已备份": "Backed up",
+      "未备份": "Not backed up",
+      "备份失效": "Backup broken",
+      "改备份/下载目录后新产物进入新目录, 旧数据保留; 输出目录切换重启 ComfyUI 后仍生效; 自动备份/自动下载开关和扫描间隔即时生效。下载目录: 点「浏览…」可在系统对话框选择本地目录（授权后下载/自动下载直接写入该目录, 无需经过浏览器下载; 未授权时使用浏览器默认下载目录）。": "After changing the backup/download directory, new assets go to the new directory (old data stays). Output directory changes persist across ComfyUI restarts. Auto-backup/auto-download and the scan interval take effect immediately. Download folder: click Browse to pick a local folder in the system dialog (after grant, downloads/auto-downloads are written straight into it, bypassing the browser download flow; otherwise the browser default folder is used).",
     };
     function t(zh) { return LANG === "zh" ? zh : (L10N[zh] !== undefined ? L10N[zh] : zh); }
     const ERR_L10N = {
@@ -483,9 +497,9 @@ app.registerExtension({
     function isGifName(n) { return /\.gif$/i.test(String(n || "")); }
     function isVideoRender(r) { return r.kind === "video" && !isGifName(r.media); }
 
-    // ---------- v1.3.8: 不勾选「显示归档库目录」= 网格/日历直接读 output 目录 ----------
-    // 语义: 关 = 插件不归档(磁盘只留 output 一套) + 网格/日历列 output 里的图片/视频;
-    //       开 = 回到归档库视图(带提示词元数据与归档全套操作)。
+    // ---------- v1.3.9: 「显示备份目录」只控归档库的可见与操作 ----------
+    // 语义: 关 = 归档库(备份目录)不可见、不可操作, 但后台自动归档照常跑; 网格/日历列 output 里的图片/视频;
+    //       开 = 网格/日历切到归档库视图(带提示词元数据与归档全套操作)。
     function archiveShown() {
       return !!(curConfig && curConfig.config && curConfig.config.show_archive === true);
     }
@@ -513,7 +527,7 @@ app.registerExtension({
     function outUrl(rel) { return "./asset/output_file?p=" + encodeURIComponent(rel); }
 
     // ---------- v1.3.6: 视频封面 + 悬停试播 ----------
-    // 后端 /asset/thumb 用 ffmpeg 抽首帧并落盘缓存(不依赖是否已归档);
+    // 后端 /asset/thumb 用 ffmpeg 抽首帧并落盘缓存(不依赖是否已备份);
     // 后端生成不出来时, 前端用 <video> + canvas 兜底截帧, 保证卡片一定有画面。
     function posterUrlArch(dir, media) { return "./asset/thumb?src=arch&p=" + encodeURIComponent(dir + "/" + media); }
     function posterUrlOut(rel) { return "./asset/thumb?src=out&p=" + encodeURIComponent(rel); }
@@ -758,7 +772,7 @@ app.registerExtension({
     bindText(downloadBtn, "⬇ 下载");
     const scanBtn = $el("button.asm-btn", { onclick: doScan });
     bindText(scanBtn, "⟳ 扫描");
-    // v1.2.9: 归档库体检(只读清单, 零删除) —— §6(C)-①
+    // v1.2.9: 备份体检(只读清单, 零删除) —— §6(C)-①
     const auditBtn = $el("button.asm-btn", { onclick: openAudit });
     bindText(auditBtn, "体检");
     // v1.3.0: 回收站(统一软删除的恢复入口) —— §6(C)-②
@@ -859,7 +873,7 @@ app.registerExtension({
         // Shift+点击: 没开多选就自动进多选; 已开则从锚点连选到这一张
         if (shift && !multi) { multi = true; setMultiBtns(); statusMsg(t("多选模式: 点击切换选中, Shift+点击连选一段")); }
         if (!multi) {
-          // v1.3.8: output 条目没有归档副本/元数据 → 走 output 预览(预览/下载/删除都可用)
+          // v1.3.8: output 条目没有备份副本/元数据 → 走 output 预览(预览/下载/删除都可用)
           if (isOutRun(r)) openOutputPreview(r, list); else openPreview(r, list);
           return;
         }
@@ -888,7 +902,7 @@ app.registerExtension({
     }
 
     function renderGrid() {
-      // v1.3.8: 不勾选时 runs 本身就是 output 目录的媒体清单 → 不再做"归档库已隐藏"空态
+      // v1.3.8: 不勾选时 runs 本身就是 output 目录的媒体清单 → 不再做"备份已隐藏"空态
       const list = sortRuns(filtered(runs));
       gridEl.innerHTML = "";
       countEl.textContent = list.length + " / " + runs.length;
@@ -942,7 +956,7 @@ app.registerExtension({
       let title;
       if (selDate) {
         // v1.3.8: 措辞跟数据源走 —— 不勾选时读的是 output 目录, 不是归档库
-        const _unit = archiveShown() ? " 当天归档 " : " 当天产物 ";
+        const _unit = archiveShown() ? " 当天备份 " : " 当天产物 ";
         title = LANG === "zh" ? (selDate + " ·" + _unit + base + " 条") : (selDate + " · " + base + " assets");
       } else {
         title = t("点选日期查看当天产物");
@@ -952,7 +966,7 @@ app.registerExtension({
       }
       calListTitle.innerHTML = title;
       calListCards.innerHTML = "";
-      if (selDate && base === 0) calListCards.appendChild($el("div.asm-empty", { textContent: t(archiveShown() ? "当天没有归档产物" : "当天没有产物") }));
+      if (selDate && base === 0) calListCards.appendChild($el("div.asm-empty", { textContent: t(archiveShown() ? "当天没有备份产物" : "当天没有产物") }));
       else if (!list.length && selDate) calListCards.appendChild($el("div.asm-empty", { textContent: t("当天没有匹配当前筛选的产物") }));
       else for (const r of list) renderCard(r, calListCards, list);
     }
@@ -1097,8 +1111,8 @@ app.registerExtension({
         thumbEl,
         isVid ? $el("div.play", { textContent: "▶" }) : null,
         $el("span.badge", { textContent: isVid ? t("视频") : (f.kind === "image" ? t("图") : t("其他")) }),
-        // v1.3.1: 归档状态角标 —— 未归档黄 / 已归档不显示(常态不噪)
-        f.arch_state === "missing-info" ? $el("span.badge.warn", { textContent: t("未归档") }) : null,
+        // v1.3.1: 归档状态角标 —— 未备份黄 / 已备份不显示(常态不噪)
+        f.arch_state === "missing-info" ? $el("span.badge.warn", { textContent: t("未备份") }) : null,
         on ? $el("div.selmark", { textContent: "✓" }) : null,
       ].filter(Boolean)));
       card.appendChild($el("div.meta", {}, [
@@ -1384,7 +1398,7 @@ app.registerExtension({
       updateArchiveBtns();
     }
 
-    // v1.3.8: 归档库没显示时收起归档专属按钮(体检/回收站/修复/清理旧产物), 界面少噪音; 文件夹视图不受影响
+    // v1.3.8: 备份没显示时收起归档专属按钮(体检/回收站/修复/清理旧产物), 界面少噪音; 文件夹视图不受影响
     function updateArchiveBtns() {
       const hidden = !archiveShown();
       [auditBtn, trashBtn, repairBtn, cleanupBtn].forEach((b) => { b.style.display = hidden ? "none" : ""; });
@@ -1428,10 +1442,10 @@ app.registerExtension({
       const outMode = !archiveShown();
       const msg = outMode
         ? (LANG === "zh"
-          ? ("确定要从硬盘删除选中的 " + ids.length + " 个文件吗?\n\n删除即移入回收站(勾选「显示归档库目录」后可在回收站恢复)。")
+          ? ("确定要从硬盘删除选中的 " + ids.length + " 个文件吗?\n\n删除即移入回收站(勾选「显示备份目录」后可在回收站恢复)。")
           : ("Delete the selected " + ids.length + " files from disk?\n\nThey go to the trash (restorable after enabling the archive library)."))
         : (LANG === "zh"
-          ? ("确定要删除选中的 " + ids.length + " 项产物吗?\n\n将同时移走归档副本和 output 中的原始文件。\n(v1.3.0 起移入回收站, 可在回收站恢复)")
+          ? ("确定要删除选中的 " + ids.length + " 项产物吗?\n\n将同时移走备份副本和 output 中的原始文件。\n(v1.3.0 起移入回收站, 可在回收站恢复)")
           : ("Permanently delete the selected " + ids.length + " items from disk?\n\nThis also deletes the archive copies and the original files in output. This cannot be undone."));
       if (!confirm(msg)) return;
       if (outMode) {
@@ -1726,19 +1740,19 @@ app.registerExtension({
         pagerEl.style.display = solo ? "none" : "";
         preload(idx);
                 reportOpen("out:" + cur.rel); // 翻页也上报打开时间
-        // v1.2.3: 已归档的文件可复制提示词; v1.2.6: 「下载文件」对任何文件都可用
+        // v1.2.3: 已备份的文件可复制提示词; v1.2.6: 「下载文件」对任何文件都可用
         ta.value = "";
         copyBtn.disabled = true;
-        // v1.2.8: 未归档的文件没有 info.json, 无工作流可重组
+        // v1.2.8: 未备份的文件没有 info.json, 无工作流可重组
         wfBtn.disabled = !cur.run_dir;
         if (!cur.run_dir) {
-          bindText(ta, "该文件未归档，没有提示词元数据", "placeholder");
+          bindText(ta, "该文件未备份，没有提示词元数据", "placeholder");
           return;
         }
         bindText(ta, "提示词", "placeholder");
         fetchRunInfo(cur.run_dir).then((info) => {
           if (list[idx] !== cur) return; // 翻页了就别回填
-          if (!info) { bindText(ta, "该文件未归档，没有提示词元数据", "placeholder"); return; }
+          if (!info) { bindText(ta, "该文件未备份，没有提示词元数据", "placeholder"); return; }
           ta.value = (info.positive || "") + (info.negative ? "\n\nNegative prompt: " + info.negative : "");
           copyBtn.disabled = !ta.value;
         });
@@ -1749,7 +1763,7 @@ app.registerExtension({
       bindText(ta, "提示词", "placeholder");
       const copyBtn = bindText($el("button.asm-btn", { onclick: () => { ta.select(); navigator.clipboard?.writeText(ta.value).then(() => statusMsg(t("已复制"))); } }), "复制提示词");
       const dlBtn = bindText($el("button.asm-btn.primary", { onclick: () => downloadOutputFile(list[idx]) }), "下载文件");
-      // v1.2.8: 工作流不落散落文件, 需要时从归档 info.json 重组下载(未归档的文件禁用)
+      // v1.2.8: 工作流不落散落文件, 需要时从归档 info.json 重组下载(未备份的文件禁用)
       const wfBtn = bindText($el("button.asm-btn", { onclick: async () => {
         const cur = list[idx];
         if (!cur || !cur.run_dir) return;
@@ -1863,12 +1877,12 @@ app.registerExtension({
         statusMsg(t("下载失败") + (e && e.message ? "  " + e.message : ""));
       }
     }
-    // 删除单个 output 文件(已归档的连带删归档条目, 与网格预览的删除同语义)
+    // 删除单个 output 文件(已备份的连带删归档条目, 与网格预览的删除同语义)
     async function deleteOutputFile(f) {
       if (!f) return;
       const archived = !!f.run_dir;
       const msg = LANG === "zh"
-        ? ("确定要删除该文件吗?\n\n" + f.rel + (archived ? "\n\n将同时移走它的归档副本。" : "") + "\n(v1.3.0 起移入回收站, 可在回收站恢复)")
+        ? ("确定要删除该文件吗?\n\n" + f.rel + (archived ? "\n\n将同时移走它的备份副本。" : "") + "\n(v1.3.0 起移入回收站, 可在回收站恢复)")
         : ("Delete this file from disk?\n\n" + f.rel + (archived ? "\n\nIts archive copy will be deleted as well. This cannot be undone." : "\n\nThis cannot be undone."));
       if (!confirm(msg)) return;
       const d = await postJSON("./asset/delete_output_file", { path: f.rel });
@@ -1927,7 +1941,7 @@ app.registerExtension({
 
     async function doDelete(r, modal, onDone) {
       const msg = LANG === "zh"
-        ? ("确定要删除该产物吗?\n\n" + r.name + "\n\n将同时移走归档副本和 output 中的原始文件。\n(v1.3.0 起移入回收站, 可在回收站恢复)")
+        ? ("确定要删除该产物吗?\n\n" + r.name + "\n\n将同时移走备份副本和 output 中的原始文件。\n(v1.3.0 起移入回收站, 可在回收站恢复)")
         : ("Permanently delete this asset from disk?\n\n" + r.name + "\n\nThis also deletes the archive copy and the original file in output. This cannot be undone.");
       if (!confirm(msg)) return;
       const res = await fetch("./asset/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ run_id: r.dir }) });
@@ -1986,7 +2000,7 @@ app.registerExtension({
         bindText($el("h2", { style: { margin: "0 0 10px", fontSize: "15px" } }), "⚙ 资产设置"),
         $el("div.asm-set", {}, [
           row("输出目录", fOut, true),
-          row("归档库目录", fArch, true),
+          row("备份目录", fArch, true),
           $el("div.row", {}, [
             bindText($el("label"), "下载目录"),
             fDlDir,
@@ -1998,17 +2012,17 @@ app.registerExtension({
           ]),
           $el("div.chk", {}, [fMeta, bindText($el("span"), "下载包含 json/txt 元数据")]),
           $el("div.chk", {}, [fKeepFolders, bindText($el("span"), "下载保留每张图的文件夹")]),
-          $el("div.chk", {}, [fAuto, bindText($el("span"), "自动归档新产物")]),
+          $el("div.chk", {}, [fAuto, bindText($el("span"), "自动备份新产物")]),
           $el("div.chk", {}, [fAutoDl, bindText($el("span"), "自动下载新产物")]),
-          $el("div.chk", {}, [fExisting, bindText($el("span"), "归档安装前已有的产物")]),
-          $el("div.chk", {}, [fShowArch, bindText($el("span"), "显示归档库目录（不勾选=网格/日历直接读输出目录，不做任何复制）")]),
+          $el("div.chk", {}, [fExisting, bindText($el("span"), "备份安装前已有的产物")]),
+          $el("div.chk", {}, [fShowArch, bindText($el("span"), "显示备份目录（不勾选=备份不可见不可操作，备份与网格/日历照常）")]),
           row("缩略图宽度(px)", fThumb),
           row("扫描间隔(秒)", fInterval),
         ]),
         $el("div.btns", {}, [
           bindText($el("button.asm-btn.primary", { onclick: saveSettings }), "保存设置"),
         ]),
-        bindText($el("div", { style: { fontSize: "11px", color: "var(--descrip-text,#aaa)", marginTop: "10px" } }), "下载默认只保存图片/视频本体并全部平铺（缩略图始终不下载, 不建每张图的文件夹）; 需要元数据或文件夹时勾选上面的两个开关。改归档/下载目录后新产物进入新目录, 旧数据保留; 输出目录切换重启 ComfyUI 后仍生效; 自动归档/自动下载开关和扫描间隔即时生效。下载目录: 点「浏览…」可在系统对话框选择本地目录（授权后下载/自动下载直接写入该目录, 无需经过浏览器下载; 未授权时使用浏览器默认下载目录）。"),
+        bindText($el("div", { style: { fontSize: "11px", color: "var(--descrip-text,#aaa)", marginTop: "10px" } }), "下载默认只保存图片/视频本体并全部平铺（缩略图始终不下载, 不建每张图的文件夹）; 需要元数据或文件夹时勾选上面的两个开关。改备份/下载目录后新产物进入新目录, 旧数据保留; 输出目录切换重启 ComfyUI 后仍生效; 自动备份/自动下载开关和扫描间隔即时生效。下载目录: 点「浏览…」可在系统对话框选择本地目录（授权后下载/自动下载直接写入该目录, 无需经过浏览器下载; 未授权时使用浏览器默认下载目录）。"),
       ]);
       m.appendChild($el("div.bk", { onclick: () => m.remove() }));
       m.appendChild(pn);
@@ -2256,7 +2270,7 @@ app.registerExtension({
       }
       throw lastErr || new Error("fetch failed");
     }
-    // v1.3.8: output 模式的取流 —— 直接取 output 原文件, 不碰归档副本
+    // v1.3.8: output 模式的取流 —— 直接取 output 原文件, 不碰备份副本
     async function fetchOutBytes(relPath, tries) {
       tries = tries || 3;
       let lastErr = null;
@@ -2300,7 +2314,7 @@ app.registerExtension({
       for (const r of list) {
         const runBase = safeName(r.name);
         const subdir = keepFolders ? runBase : "";
-        // v1.3.8: output 条目只有一个本体文件(没有归档副本里的 info/prompt), 直接取原文件
+        // v1.3.8: output 条目只有一个本体文件(没有备份副本里的 info/prompt), 直接取原文件
         if (isOutRun(r)) {
           try { push(safeName(r.media), await fetchOutBytes(r.rel), subdir); }
           catch (e) { failed.push(r.rel + "  （" + (e && e.message ? e.message : e) + "）"); }
@@ -2510,16 +2524,16 @@ app.registerExtension({
           statusMsg(t("已自动更新: 共 ") + runs.length + t(" 条资产"));
           return;
         }
-        // v1.3.1: 扫描汇总 = 新增 N / 跳过 M 残留 / K 条归档失效
+        // v1.3.1: 扫描汇总 = 新增 N / 跳过 M 残留 / K 条备份失效
         const parts = [LANG === "zh" ? ("扫描完成, 新增 " + d.new + " 条") : ("Scan done, " + d.new + " new")];
         if (d.skipped) parts.push(LANG === "zh" ? ("跳过 " + d.skipped + " 残留") : ("skipped " + d.skipped));
-        if (d.broken) parts.push(LANG === "zh" ? (d.broken + " 条归档失效") : (d.broken + " broken"));
+        if (d.broken) parts.push(LANG === "zh" ? (d.broken + " 条备份失效") : (d.broken + " broken"));
         statusMsg(parts.join(", "));
         await loadRuns(); refresh();
       } else statusMsg(t("扫描失败"));
     }
 
-    // ---------- v1.2.9 归档库体检(只读, 零删除) ----------
+    // ---------- v1.2.9 备份体检(只读, 零删除) ----------
     function fmtBytes(n) {
       if (!n && n !== 0) return "—";
       if (n < 1024) return n + " B";
@@ -2553,12 +2567,12 @@ app.registerExtension({
         d = await res.json();
       } catch (e) { d = { ok: false, error: e && e.message }; }
       if (!d || !d.ok) { statusMsg(t("体检失败") + " " + terr(d && d.error)); return; }
-      statusMsg(t("归档库体检"));
+      statusMsg(t("备份体检"));
       if (pv) closePreview();
       const m = $el("div.asm-modal");
       m.style.display = "flex";
       const pn = $el("div.pn", { style: { maxHeight: "86vh", overflow: "auto", width: "min(760px, 92vw)" } });
-      const ttl = bindText($el("h2", { style: { margin: "0 0 6px", fontSize: "15px" } }), "归档库体检");
+      const ttl = bindText($el("h2", { style: { margin: "0 0 6px", fontSize: "15px" } }), "备份体检");
       const tot = $el("div", { style: { fontSize: "12px", color: "var(--descrip-text,#aaa)" } });
       tot.textContent = LANG === "zh"
         ? ("共 " + (d.totals.runs || 0) + " 个条目, " + t("占用") + " " + fmtBytes(d.totals.bytes || 0))
@@ -2711,7 +2725,7 @@ app.registerExtension({
         d = await res.json();
       } catch (e) { d = { ok: false, error: e && e.message }; }
       if (!d || !d.ok) { statusMsg(t("清理失败") + " " + terr(d && d.error)); return; }
-      statusMsg(t("归档库体检"));
+      statusMsg(t("备份体检"));
       if (pv) closePreview();
       const m = $el("div.asm-modal");
       m.style.display = "flex";
@@ -2775,8 +2789,9 @@ app.registerExtension({
     function statusMsg(s) { status.textContent = s; }
 
     // ---------- 打开/关闭 ----------
-    // v1.3.8: 数据源二选一 —— 勾选「显示归档库目录」读归档库(/asset/list),
+    // v1.3.9: 数据源二选一 —— 勾选「显示备份目录」读归档库(/asset/list),
     // 不勾选读 output 目录(/asset/output_files), 后者只列图片/视频, 与文件夹视图同源。
+    // (注意: 不勾选 ≠ 不归档 —— 备份仍由后台线程照常写入归档库, 只是看不见)
     function outFileToRun(f) {
       const t0 = f.mtime || "";
       return {
